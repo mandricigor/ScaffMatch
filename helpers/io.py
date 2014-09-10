@@ -173,7 +173,6 @@ def write_agp(graph_file, agp_file, runtime=None):
 
     # ensure node degree is low.
     deg_list = [len(SG.neighbors(x)) for x in SG.nodes()]
-    print graph_file
     if max(deg_list) > 2:
         logging.error("is not a path")
         sys.exit(1)
@@ -339,9 +338,6 @@ def gen_sam_pair(fpath1, fpath2, flip_1, flip_2):
         tok1 = line1.strip().split()
         tok2 = line2.strip().split()
 
-        if len(tok1) < 2 or len(tok2) < 2:
-            print tok1, tok2
-
         # simplify.
         if tok1[1] == '0':
             orien1 = 0
@@ -367,7 +363,6 @@ def gen_sam_pair(fpath1, fpath2, flip_1, flip_2):
         right1 = left1 + len(tok1[9])
         right2 = left2 + len(tok2[9])
 
-        print ctg1<ctg2, orien1, orien2
         state = misc.determine_state(ctg1, ctg2, orien1, orien2)
 
         # yield the info.

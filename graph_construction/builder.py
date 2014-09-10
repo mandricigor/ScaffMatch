@@ -182,7 +182,7 @@ class GraphBuilder(object):
             dist[pair] = {(pos1, pos2): distanta}
         else:
             if 1 != 1: #(pos1, pos2) in para:
-                continue
+                pass
             else:
                 """left = data[pair].get("left")
 		        right = data[pair].get("right")
