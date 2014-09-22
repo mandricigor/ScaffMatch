@@ -1,7 +1,9 @@
 
 
 from collections import deque
-
+import networkx as nx
+import helpers.io as io
+from math import sqrt
 
 
 class Pairer(object):
@@ -11,6 +13,8 @@ class Pairer(object):
     def __init__(self):
         self._cov = {}
         self._sizes = {}
+        self._IGORgraph = nx.Graph()
+        self._contigs_coverage()
         
         
     
@@ -30,7 +34,6 @@ class Pairer(object):
         in1_sam = self._settings.get("mapping1")
         in2_sam = self._settings.get("mapping2")
         unampped = self._settings.get("unmapped_file")
-    
     
         curlen1 = curlen2 = 0
     
@@ -123,7 +126,8 @@ class Pairer(object):
                             unmapped.write(self._format_sam_line(line1, line2))
                         else:
                             if line1[2] != line2[2]: # discard those who has mapped to the same contig
-                                mapped.write(self._format_sam_line(line1, line2))                   
+                                mapped.write(self._format_sam_line(line1, line2))
+                                self._paired_read_to_graph(line1, line2)
                 
 
                 leftover1 = "\n".join(base1) + "\n" + leftover1
@@ -134,11 +138,102 @@ class Pairer(object):
 
     def _format_sam_line(self, line1, line2):
         """Take what we need from two lines"""
-        aa = "%s %s %s %s %s " % (line1[0], line1[1], line1[2], line1[3], line1[9])
-        bb = "%s %s %s %s %s\n" % (line2[0], line2[1], line2[2], line2[3], line2[9])
-        return aa + bb
+        return "%s %s %s %s %s " % (line1[0], line1[1], line1[2], line1[3], line1[9]) + \
+                "%s %s %s %s %s\n" % (line2[1], line2[2], line2[3], line2[9])
 
 
+
+
+    def _paired_read_to_graph(self, line1, line2):
+        
+        ins_size = int(self._settings.get("ins_size"))
+        std_dev = int(self._settings.get("std_dev"))
+        
+        # first leg of the read
+        oflag1, rname1, lpos1 = line1[1], line1[2], int(line1[3])
+        width1 = len(line1[9])
+        rpos1 = lpos1 + width1
+        
+        # second leg of the read
+        oflag2, rname2, lpos2 = line2[1], line2[2], line2[3]
+        width2 = len(line2[9])
+        rpos2 = lpos2 + width2
     
     
+        order = (rname1, rname2)
+        
+        op, oq = self._get_orientation(oflag1, oflag2, int(self._settings.get("pair_mode")))
+        orients = (op, oq)
+        
+        
+        if orients == (0, 0):
+            distance = ins_size - (width1 - lpos1) - rpos2
+            edge = (rname1 + "_1", rname2 + "_2")
+        elif orients == (1, 1):
+            distance2 = ins_size - (width2 - lpos2) - rpos1
+            edge = (rname1 + "_2", rname2 + "_1")
+        elif orients == (0, 1):
+            distance = ins_size - (width1 - lpos1) - (width2 - lpos2)
+            edge = (rname1 + "_1", rname2 + "_1")
+        elif orients == (1, 0):
+            distance2 = ins_size - rpos1 - rpos2
+            edge = (rname1 + "_2", rname2 + "_2")
+        
+        
+        # STOPPED HERE!!!!!!!!!!!
+    
+    
+    
+    
+    
+    def _get_orientation(self, oflag1, oflag2, pair_mode):
+        """Gets orientation from SAM object for pairs"""
+        if oflag1 == "0":
+            o1 = 0
+        else:
+            o1 = 1
+        if oflag2 == "0":
+            o2 = 0
+        else:
+            o2 = 1
+        if pair_mode == 1:
+            o2 = 1 - o2
+        if pair_mode == 2:
+            o1 = 1 - o1
+        return o1, o2
+    
+    
+    
+    
+    
+    
+    def _contigs_coverate(self):
+        seqs = io.load_fasta(self._settings.get("ctg_fasta"))
+        
+        mean_cov = 0
+        counter = 0
+        covs = []
+        
+        for name, seq in seqs.items():
+    
+            # skip split names.
+            tmp = name.split(" ")
+            name = tmp[0]
+    
+            l = len(seq)
+            try:
+                cov = self._settings.get("cov")[name] * 1.0 / l
+            except Exception:
+                cov = 0
+            mean_cov += cov
+            counter += 1
+            covs.append(cov)
+            
+        mean_cov *= 1.0
+        mean_cov /= counter
+        
+        disp_cov = sqrt(sum([(x - mean_cov) * (x - mean_cov) for x in covs]) / counter)
+        
+        self._settings.set("mean_cov", mean_cov)
+        self._settings.set("disp_cov", disp_cov)
     

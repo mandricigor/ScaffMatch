@@ -250,6 +250,25 @@ class GraphBuilder(object):
         
         
         
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
     def pop_sam(self, token, sam):
         ''' populates object '''
     
