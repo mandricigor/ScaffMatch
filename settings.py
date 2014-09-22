@@ -12,7 +12,8 @@ class Settings(object):
     _settings = {
                 "aligner": "bowtie2",
                 "bundle_size": 1,
-                "key_size": 2
+                "key_size": 2,
+                "unmapped_file": "unmapped.txt"
                 }
     
     

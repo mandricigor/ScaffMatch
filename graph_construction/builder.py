@@ -59,7 +59,7 @@ class GraphBuilder(object):
             mean_cov += cov
             counter += 1
             covs.append(cov)
-            print name, cov
+            #print name, cov
             # add node.
             EG.add_node(name, {'seq':seq, 'width':l, 'cov':cov})
             
