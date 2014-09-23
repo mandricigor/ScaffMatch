@@ -506,7 +506,8 @@ def write_fasta(ctg_file, agp_file, scf_file):
                 
     # add any missing contigs back in.
     hits = set(list(agp[:]['comp_name']))
-    hits.remove('fragment')
+    if 'fragment' in hits:
+        hits.remove('fragment')
     
     for name in contigs:
         if name not in hits:

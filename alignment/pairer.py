@@ -1,11 +1,9 @@
 
 
-import os
-import subprocess
-import logging
-import numpy as np
-import sys
-
+from collections import deque
+import networkx as nx
+import helpers.io as io
+from math import sqrt
 
 
 class Pairer(object):
@@ -15,316 +13,227 @@ class Pairer(object):
     def __init__(self):
         self._cov = {}
         self._sizes = {}
+        self._IGORgraph = nx.Graph()
+        self._contigs_coverage()
+        
+        
+    
+    def _read_in_chunks(self, file_object, chunk_size=2000000):
+        """Lazy function (generator) to read a file piece by piece.
+        Default chunk size: 1k."""
+        while True:
+            data = file_object.read(chunk_size)
+            if not data:
+                break
+            yield data
+        
+
     
     def pair(self):
-        """ creates the alignment """
-    
-        # key size.
-        key_size = self._settings.get("key_size")
-    
-        # relavent files.
-        base_dir = self._settings.get("scaff_dir")
-        ctg_fasta = self._settings.get("ctg_fasta")
+        """A simple finite state machine for pairing sam's"""
         in1_sam = self._settings.get("mapping1")
         in2_sam = self._settings.get("mapping2")
+        unampped = self._settings.get("unmapped_file")
     
-        read1_sam = os.path.abspath('%s/read1.sam' % base_dir)
-        read2_sam = os.path.abspath('%s/read2.sam' % base_dir)
+        curlen1 = curlen2 = 0
     
-        names1_npy = os.path.abspath('%s/name1.npy' % base_dir)
-        names2_npy = os.path.abspath('%s/name2.npy' % base_dir)
-        sort1_npy = os.path.abspath('%s/sort1.npy' % base_dir)
-        sort2_npy = os.path.abspath('%s/sort2.npy' % base_dir)
-    
-        # compute name sizes.
-        names_size1 = self._name_size(in1_sam)
-        names_size2 = self._name_size(in2_sam)
-    
-    
-        # check if sorted is present.
-        if os.path.isfile(sort1_npy) == False:
- 
-            # create / load name array.
-            if os.path.isfile(names1_npy) == False:
-                logging.info("creating name array 1")
-                names1 = self._extract_names(in1_sam, names_size1, key_size)
-                self._names(file_name=names1_npy, data=names1)
+        with open('mapped1', 'w') as mapped, open(unampped, 'w') as unmapped, open(in1_sam) as xx, open(in2_sam) as yy:
+            fileiter1 = self._read_in_chunks(xx)
+            fileiter2 = self._read_in_chunks(yy)
 
-            else:
-                logging.info("loading name array 1")
-                names1 = self._names(file_name=names1_npy)
- 
-     
-            # sort it.
-            logging.info("sorting name array 1")
-            names1.sort(order=['name'])
-            self._names(file_name=sort1_npy, data=names1)
-            del names1
-            subprocess.call(["rm", "-f", names1_npy])
-     
-        # check if sorted is present.
-        if os.path.isfile(sort2_npy) == False:
-     
-            # create / load name array.
-            if os.path.isfile(names2_npy) == False:
-                logging.info("creating name array 2")
-                names2 = self._extract_names(in2_sam, names_size2, key_size)
-                self._names(file_name=names2_npy, data=names2)
-            else:
-                logging.info("loading name array 2")
-                names2 = self._names(file_name=names2_npy)
-     
-            # sort it.
-            logging.info("sorting name array 2")
-            names2.sort(order=['name'])
-            self._names(file_name=sort2_npy, data=names2)
-            del names2
-            subprocess.call(["rm", "-f", names2_npy])
-    
-        # create sizes.
-        self._sizes = self.create_sizes(ctg_fasta)
-    
-    
-        # do work.
-        self._dual_loop(sort1_npy, sort2_npy, in1_sam, in2_sam, read1_sam, read2_sam)
-        
-        self._settings.set("cov", self._cov)
-        
-    
-    
+            leftover1 = leftover2 = ""
 
+            while True:
+                try:
+                    output1 = fileiter1.next()
+                except StopIteration:
+                    output1 = ""
         
-    def set_settings(self, settings):
-        self._settings = settings
-        
-       
-    def create_sizes(self, ctg_fasta):
-        sizes = {}
-        with open(ctg_fasta) as f:
-            lines = f.readlines()
-        if lines:
-            lines = ''.join(lines)
-            lines = lines.split('>')[1:]
-            for line in lines:
-                line = line.split("\n")
-                contig = line[0]
-                lens = sum(map(len, line[1:]))
-                sizes[contig] = lens
-        return sizes
-        
-            
-    def _dual_loop(self, sort1_npy, sort2_npy, in1_sam, in2_sam, out1_sam, out2_sam):
-        """ extract unique alignments, pairs them and annotate repeats"""
-    
-        # open SAM files.
-        sam1 = open(in1_sam, "rb")
-        sam2 = open(in2_sam, "rb")
-        out1 = open(out1_sam, "wb")
-        out2 = open(out2_sam, "wb")
-    
-    
-        # create iterators.
-        itr1 = self._uniq_gen(sort1_npy, sam1)
-        itr2 = self._uniq_gen(sort2_npy, sam2)
-    
-    
-        # first git.
-        u1 = itr1.next()
-        u2 = itr2.next()
- 
-        print u1, u2
-        
-        cnt = 0
-        while u1 != None and u2 != None:
-            # peek for a match.
-            if u1['name'] == u2['name']:
-    
-                # seek to it.
-                sam1.seek(u1['row'])
-                sam2.seek(u2['row'])
-                out1.write(sam1.readline())
-                out2.write(sam2.readline())
-    
-                # change both.
-                u1 = itr1.next()
-                u2 = itr2.next()
-    
-            else:
-                # pop smaller.
-                if u1['name'] > u2['name']:
-                    u2 = itr2.next()
+                try:
+                    output2 = fileiter2.next()
+                except StopIteration:
+                    output2 = ""
+                
+                
+                output1 = leftover1 + output1
+                output2 = leftover2 + output2
+                
+                print len(output1), len(output2)
+                
+                if curlen1 == len(output1) and curlen2 == len(output2):
+                    break
                 else:
-                    u1 = itr1.next()
+                    curlen1 = len(output1) 
+                    curlen2 = len(output2)
+                
+                if output1 == output2 == "":
+                    break
+                
+        
+                leftoverpos1 = output1.rfind("\n")
+                base1 = output1[:leftoverpos1 + 1]
+                leftover1 = output1[leftoverpos1 + 1:]
+        
+                leftoverpos2 = output2.rfind("\n")
+                base2 = output2[:leftoverpos2 + 1]
+                leftover2 = output2[leftoverpos2 + 1:]
+        
+                base1, base2 = deque(base1.split("\n")[:-1]), deque(base2.split("\n")[:-1])
+                
+                reads1 = map(lambda x: x.split()[0], base1)
+                reads2 = map(lambda x: x.split()[0], base2)
+                
+
+                
+                reads11 = []
+                curread, curcounter = "", 0
+                for read in reads1:
+                    if read == curread:
+                        curcounter += 1
+                    else:
+                        reads11.append((curread, curcounter))
+                        curread, curcounter = read, 1
+                else:
+                    reads11.append((curread, curcounter))
+                reads11 = deque(reads11[1:-1])
+                
+                reads22 = []
+                curread, curcounter = "", 0
+                for read in reads2:
+                    if read == curread:
+                        curcounter += 1
+                    else:
+                        reads22.append((curread, curcounter))
+                        curread, curcounter = read, 1
+                else:
+                    reads22.append((curread, curcounter))
+                reads22 = deque(reads22[1:-1])
+
+                    
+                while reads11 and reads22:
+                    r1, c1 = reads11.popleft()
+                    r2, c2 = reads22.popleft()
+
+                    if c1 > 1 or c2 > 1:
+                        for i in range(c1):
+                            base1.popleft()
+                        for i in range(c2):
+                            base2.popleft()
+                            
+                    else:
+                        line1, line2 = base1.popleft().split(), base2.popleft().split()
+                        if line1[2] == "*" or line2[2] == "*":
+                            unmapped.write(self._format_sam_line(line1, line2))
+                        else:
+                            if line1[2] != line2[2]: # discard those who has mapped to the same contig
+                                mapped.write(self._format_sam_line(line1, line2))
+                                self._paired_read_to_graph(line1, line2)
+                
+
+                leftover1 = "\n".join(base1) + "\n" + leftover1
+                leftover2 = "\n".join(base2) + "\n" + leftover2
+                    
+
+
+
+    def _format_sam_line(self, line1, line2):
+        """Take what we need from two lines"""
+        return "%s %s %s %s %s " % (line1[0], line1[1], line1[2], line1[3], line1[9]) + \
+                "%s %s %s %s %s\n" % (line2[1], line2[2], line2[3], line2[9])
+
+
+
+
+    def _paired_read_to_graph(self, line1, line2):
+        
+        ins_size = int(self._settings.get("ins_size"))
+        std_dev = int(self._settings.get("std_dev"))
+        
+        # first leg of the read
+        oflag1, rname1, lpos1 = line1[1], line1[2], int(line1[3])
+        width1 = len(line1[9])
+        rpos1 = lpos1 + width1
+        
+        # second leg of the read
+        oflag2, rname2, lpos2 = line2[1], line2[2], line2[3]
+        width2 = len(line2[9])
+        rpos2 = lpos2 + width2
     
-            # die after 5
-            cnt += 1
-            #if cnt > 5: break
     
-        # close them.
-        sam1.close()
-        sam2.close()
-        out1.close()
-        out2.close()
+        order = (rname1, rname2)
+        
+        op, oq = self._get_orientation(oflag1, oflag2, int(self._settings.get("pair_mode")))
+        orients = (op, oq)
+        
+        
+        if orients == (0, 0):
+            distance = ins_size - (width1 - lpos1) - rpos2
+            edge = (rname1 + "_1", rname2 + "_2")
+        elif orients == (1, 1):
+            distance2 = ins_size - (width2 - lpos2) - rpos1
+            edge = (rname1 + "_2", rname2 + "_1")
+        elif orients == (0, 1):
+            distance = ins_size - (width1 - lpos1) - (width2 - lpos2)
+            edge = (rname1 + "_1", rname2 + "_1")
+        elif orients == (1, 0):
+            distance2 = ins_size - rpos1 - rpos2
+            edge = (rname1 + "_2", rname2 + "_2")
+        
+        
+        # STOPPED HERE!!!!!!!!!!!
     
     
     
     
     
-    def _names(self, file_name=None, data=None, size=None, name_size=None):
-        """ returns pointer to mapped file """
-    
-        if size != None and name_size != None:
-            return np.zeros(size,  dtype=np.dtype([('name','S%d' % name_size),('row',np.int)]))
-        elif file_name != None and data == None:
-            return np.load(file_name)
-        elif file_name != None and data != None:
-            np.save(file_name, data)
+    def _get_orientation(self, oflag1, oflag2, pair_mode):
+        """Gets orientation from SAM object for pairs"""
+        if oflag1 == "0":
+            o1 = 0
         else:
-            logging.error("bad usage")
-            sys.exit(1)
-    
-    def _name_size(self, file_path):
-        """ guess string size """
-        # determine name size.
-        print file_path
-        with open(file_path, "rb") as fin:
-            for line1 in fin:
-                if line1[0] == '@': continue
-                name_size = 100 #len(line1.split("\t")[0]) + 10
-                break
-    
-        return name_size
-    
-    def _extract_names(self, file_name, name_size, key_size):
-        """ builds numpy array of name hits"""
-    
-        # count lines.
-        logging.info("reading lines")
-        with open(file_name, "rb") as fin:
-            size = 0
-            for line in fin:
-                if line[0] == '@': continue
-                size += 1
-                
-        print size, "THIS IS THE SIZE"
-                #if size > 10000000: break
-    
-        # allocate array.
-        names = self._names(size=size, name_size=name_size)
-    
-        # copy data into array.
-        logging.info("copying data")
-        with open(file_name, "rb") as fin:
-    
-            offset = 0
-            idx = 0
-            for line1 in fin:
-    
-                # skip header.
-                if line1[0] == '@':
-                    offset += len(line1)
-                    continue
-    
-                # tokenize.
-                tokens = line1.split("\t")
-                
-    
-                # skip no map.
-                if tokens[2] == "*":
-                    offset += len(line1)
-                    print line1, "DDDDDDDDDDDDDDDDDDDDDDDDDDD"
-                    continue
+            o1 = 1
+        if oflag2 == "0":
+            o2 = 0
+        else:
+            o2 = 1
+        if pair_mode == 1:
+            o2 = 1 - o2
+        if pair_mode == 2:
+            o1 = 1 - o1
+        return o1, o2
     
     
     
     
-                # operate.
-                if key_size == 0:
-                    names[idx]['name'] = tokens[0]
-                else:
-                    names[idx]['name'] = tokens[0][0:-key_size]
-                names[idx]['row'] = offset
-    
-                # reset.
-                idx += 1
-                offset += len(line1)
-    
-        # resize.
-        names.resize(idx)
-        # return the size.
-        return names
     
     
+    def _contigs_coverate(self):
+        seqs = io.load_fasta(self._settings.get("ctg_fasta"))
+        
+        mean_cov = 0
+        counter = 0
+        covs = []
+        
+        for name, seq in seqs.items():
     
-    def _uniq_gen(self, names_npy, sam):
-        """ generator for unique reads in list """
+            # skip split names.
+            tmp = name.split(" ")
+            name = tmp[0]
     
-        # create mmap object.
-        mmap = np.load(names_npy, mmap_mode='r')
+            l = len(seq)
+            try:
+                cov = self._settings.get("cov")[name] * 1.0 / l
+            except Exception:
+                cov = 0
+            mean_cov += cov
+            counter += 1
+            covs.append(cov)
+            
+        mean_cov *= 1.0
+        mean_cov /= counter
+        
+        disp_cov = sqrt(sum([(x - mean_cov) * (x - mean_cov) for x in covs]) / counter)
+        
+        self._settings.set("mean_cov", mean_cov)
+        self._settings.set("disp_cov", disp_cov)
     
-        # setup buffered loop.
-        buffstep = 10000000
-        buffo = 0
-        buffs = buffstep
-        if buffo + buffstep > mmap.shape[0]:
-            buffs = mmap.shape[0] - buffo
-    
-        # buffer loop.
-        while buffo < mmap.shape[0]:
-            # make buffer.
-            logging.info("unique: buffering: %d %d" % (buffo, buffs))
-            names = mmap[buffo:buffs]
-            # iterate over non-boundry cases.
-            for i in range(1, names.shape[0]-1):
-                # must not match its neighbors.
-                if names[i-1]['name'] != names[i]['name'] and names[i+1]['name'] != names[i]['name']:
-                    tokens = sam.readline().split("\t")
-                    if len(tokens) > 9:
-                        cov = self._cov.get(tokens[2], 0)
-                        self._cov[tokens[2]] = cov + len(tokens[9])
-                    yield names[i]
-#                 else:
-#                     # annotate repeat.
-#                     sam.seek(names[i]['row'])
-#                     tokens = sam.readline().split("\t")
-#                     ctg = tokens[2]
-#                     start = int(tokens[3])
-#                     stop = start + len(tokens[9])
-                buffo += 1
-            # check the first one.
-            if names[0]['name'] != names[1]['name']:
-                tokens = sam.readline().split("\t")
-                if len(tokens) > 9:
-                    cov = self._cov.get(tokens[2], 0)
-                    self._cov[tokens[2]] = cov + len(tokens[9])
-                yield names[i]
-#             else:
-#                 sam.seek(names[i]['row'])
-#                 tokens = sam.readline().split("\t")
-#                 ctg = tokens[2]
-#                 start = int(tokens[3])
-#                 stop = start + len(tokens[9])
-            buffo += 1
-    
-            # check the last one.
-            if names[-1]['name'] != names[-2]['name']:
-                tokens = sam.readline().split("\t")
-                if len(tokens) > 9:
-                    cov = self._cov.get(tokens[2], 0)
-                    self._cov[tokens[2]] = cov + len(tokens[9])
-                yield names[i]
-#             else:
-#                 sam.seek(names[i]['row'])
-#                 tokens = sam.readline().split("\t")
-#                 ctg = tokens[2]
-#                 start = int(tokens[3])
-#                 stop = start + len(tokens[9])
-            buffo += 1
-    
-            # update for buffer.
-            if buffo + buffstep > mmap.shape[0]:
-                buffs = buffo + (mmap.shape[0] - buffo)
-            else:
-                buffs = buffo + buffstep
-                # yield poison pill
-        yield None
