@@ -52,7 +52,7 @@ class GraphConstructor(object):
     
         curlen1 = curlen2 = 0
     
-        for lib_id in libraries:
+        for lib_id in libraries.keys()[0:1]: # stub for multiple libraries
             lib = libraries[lib_id]
             sam1, sam2 = lib["sam1"], lib["sam2"]
             with open(mapped, 'w') as mapped, open(unmapped, 'w') as unmapped, \
@@ -203,7 +203,6 @@ class GraphConstructor(object):
             link_dict = {"pos1": pos1, "pos2": pos2, "dist": distance,
                             "ins": ins_size, "std": std_dev}
             link = Link(**link_dict)
-            print link
             para.append(link)
                 
     
@@ -243,8 +242,8 @@ class GraphConstructor(object):
             mean_cov += cov
             counter += 1
             covs.append(cov)
-            self._IGORgraph.add_node(name, {'seq': seq, 'width': l, 'cov': cov})
-            
+            self._IGORgraph.add_node(name + "_1", {'seq': seq, 'width': l, 'cov': cov}) # first strand
+            self._IGORgraph.add_node(name + "_2", {'seq': seq, 'width': l, 'cov': cov}) # second strand
         mean_cov *= 1.0
         mean_cov /= counter
         
@@ -265,5 +264,13 @@ class GraphConstructor(object):
         "The Greedy Path-Merging Algorithm for Contig Scaffolding"
         by Huson, Reinert and Myers, 2002
         """
-        pass
-    
+        for node1, node2 in self._dist:
+            links = self._dist[(node1, node2)]
+            dists = [x.dist for x in links]
+            if dists:
+                linkw = len(dists)
+                avgdist = sum(dists) / linkw                
+            else:
+                avgdist = None
+            if avgdist:
+                self._IGORgraph.add_edge(node1, node2, weight=linkw)
