@@ -1,5 +1,5 @@
 
-from helpers.io import write_agp, write_fasta
+from fasta.io import write_agp, write_fasta
 
 from alignment.graph import GraphConstructor
 from matching.matching import Matcher

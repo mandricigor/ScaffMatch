@@ -2,7 +2,7 @@
 
 from collections import deque
 import networkx as nx
-import helpers.io as io
+import fasta.io as io
 from math import sqrt
 
 
