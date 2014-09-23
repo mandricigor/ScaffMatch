@@ -1,8 +1,7 @@
 
 from helpers.io import write_agp, write_fasta
 
-from alignment.pairer import Pairer
-from graph_construction.builder import GraphBuilder
+from alignment.graph import GraphConstructor
 from matching.matching import Matcher
 
 
@@ -17,17 +16,11 @@ class Pipeline(object):
         
     def get_settings(self):
         return self._settings
-        
-    def _pair(self):
-        pairer = Pairer()
-        pairer.set_settings(self._settings)
-        pairer.pair()
-        
-    
-    def _scaffold_graph(self):
-        graphBuilder = GraphBuilder()
-        graphBuilder.set_settings(self._settings)
-        graphBuilder.build_graph()
+            
+    def _graph_contruction(self):
+        gconstructor = GraphConstructor()
+        gconstructor.set_settings(self._settings)
+        gconstructor.scaffolding_graph()
         
     def _matching(self):
         matcher = Matcher()
@@ -44,10 +37,9 @@ class Pipeline(object):
         write_fasta(ctg_file, agp_file, scaff_file)
         
     def scaffold(self):
-        self._pair()
-        self._scaffold_graph()
-        import time
-        start_time = time.time()
-        self._matching()
-        self._print_fasta()
-        print("--- %s seconds ---" % (time.time() - start_time))
+        self._graph_contruction()
+        #import time
+        #start_time = time.time()
+        #self._matching()
+        #self._print_fasta()
+        #print("--- %s seconds ---" % (time.time() - start_time))

@@ -13,7 +13,8 @@ class Settings(object):
                 "aligner": "bowtie2",
                 "bundle_size": 1,
                 "key_size": 2,
-                "unmapped_file": "unmapped.txt"
+                "unmapped_file": "unmapped.txt",
+                "mapped_file": "mapped.txt"
                 }
     
     
