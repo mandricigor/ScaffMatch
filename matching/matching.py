@@ -86,7 +86,7 @@ class Matcher(object):
                 ourgraph.remove_edge(x, y)
 
 
-  
+
 
         for node in repeat_nodes:
             if ourgraph.has_node(node + "_1"):
@@ -106,7 +106,8 @@ class Matcher(object):
         goodourgraph = ourgraph.copy() # this snapshot will be used later
         for node in removed_nodes: # remove these nodes temporarily from the graph
             ourgraph.remove_node(node)
-        matchings = nx.max_weight_matching(ourgraph, maxcardinality=True)
+	matchings = self.greedy_matching(ourgraph)
+        #matchings = nx.max_weight_matching(ourgraph, maxcardinality=True)
         newgraph = nx.Graph() # we need this graph for building the chains!
         for node in ourgraph.nodes():
             newgraph.add_node(node)
@@ -164,8 +165,8 @@ class Matcher(object):
         ourgraph2 = self.add_one_two(ourgraph2)
     
     
-        matchings = nx.max_weight_matching(ourgraph2, maxcardinality=True)
-        #matchings = self.greedy_matching(ourgraph2)
+        #matchings = nx.max_weight_matching(ourgraph2, maxcardinality=True)
+        matchings = self.greedy_matching(ourgraph2)
     
         newgraph = nx.Graph()
     

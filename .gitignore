@@ -3,7 +3,7 @@
 .pydevproject
 .settings
 *.cpickle
-command.sh
+command*
 mapped.txt
 unmapped.txt
 final_graph.cpickle

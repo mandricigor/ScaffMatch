@@ -26,7 +26,6 @@ class GraphConstructor(object):
         self._dist = {}
         self._IGORgraph = nx.Graph() # the main scaffolding graph
         
-        
     def set_settings(self, settings):
         self._settings = settings
         
@@ -51,7 +50,7 @@ class GraphConstructor(object):
         unmapped = self._settings.get("unmapped_file")
     
         curlen1 = curlen2 = 0
-    
+   
         for lib_id in libraries.keys()[0:1]: # stub for multiple libraries
             lib = libraries[lib_id]
             sam1, sam2 = lib["sam1"], lib["sam2"]
@@ -165,16 +164,16 @@ class GraphConstructor(object):
         # insert size and standard deviation
         library = self._settings.get("libraries").get(lib_id)
         ins_size, std_dev = library["ins"], library["std"]
-        
+ 
         # first leg of the read
         oflag1, rname1, lpos1 = line1[1], line1[2], int(line1[3])
-        width1 = len(line1[9])
-        rpos1 = lpos1 + width1
+        width1 = self._IGORgraph.node[rname1 + "_1"]["width"]
+        rpos1 = lpos1 + len(line1[9])
         
         # second leg of the read
         oflag2, rname2, lpos2 = line2[1], line2[2], int(line2[3])
-        width2 = len(line2[9])
-        rpos2 = lpos2 + width2
+        width2 = self._IGORgraph.node[rname2 + "_1"]["width"]
+        rpos2 = lpos2 + len(line2[9])
         op, oq = self._get_orientation(oflag1, oflag2, int(self._settings.get("pair_mode")))
         orients = (op, oq)
                 
@@ -191,7 +190,7 @@ class GraphConstructor(object):
             distance = ins_size - rpos1 - rpos2
             edge = (rname1 + "_2", rname2 + "_2")
 
-        #print edge, orients, distance, lpos1, lpos2
+        #print edge, orients, distance
         if -std_dev * 2 <= distance <= ins_size + 2 * std_dev:
             pair = tuple(sorted(edge))
             # change the order of positions if needed
@@ -200,11 +199,12 @@ class GraphConstructor(object):
             else:
                 pos1, pos2 = lpos2, lpos1
     
-            para = self._dist.setdefault(pair, [])
+            para = self._dist.get(pair, [])
             link_dict = {"pos1": pos1, "pos2": pos2, "dist": distance,
                             "ins": ins_size, "std": std_dev}
             link = Link(**link_dict)
             para.append(link)
+	    self._dist[pair] = para
                 
     
     def _get_orientation(self, oflag1, oflag2, pair_mode):
