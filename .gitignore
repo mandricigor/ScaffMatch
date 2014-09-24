@@ -4,3 +4,7 @@
 .settings
 *.cpickle
 command.sh
+mapped.txt
+unmapped.txt
+final_graph.cpickle
+scaffolds.fa

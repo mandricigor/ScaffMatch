@@ -144,7 +144,8 @@ class GraphConstructor(object):
                     leftover1 = "\n".join(base1) + "\n" + leftover1
                     leftover2 = "\n".join(base2) + "\n" + leftover2 
         self._build_graph()           
-
+        # now the graph should be ready for the next stage
+        return self._IGORgraph
 
 
     def _format_sam_line(self, line1, line2):
@@ -269,8 +270,8 @@ class GraphConstructor(object):
             dists = [x.dist for x in links]
             if dists:
                 linkw = len(dists)
-                avgdist = sum(dists) / linkw                
+                avgdist = float(sum(dists)) / linkw                
             else:
                 avgdist = None
             if avgdist:
-                self._IGORgraph.add_edge(node1, node2, weight=linkw)
+                self._IGORgraph.add_edge(node1, node2, weight=linkw, dist=avgdist)

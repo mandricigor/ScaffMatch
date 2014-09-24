@@ -1,6 +1,7 @@
 
+import time
+from os import remove
 from fasta.io import write_agp, write_fasta
-
 from alignment.graph import GraphConstructor
 from matching.matching import Matcher
 
@@ -20,10 +21,10 @@ class Pipeline(object):
     def _graph_contruction(self):
         gconstructor = GraphConstructor()
         gconstructor.set_settings(self._settings)
-        gconstructor.scaffolding_graph()
+        return gconstructor.scaffolding_graph()
         
-    def _matching(self):
-        matcher = Matcher()
+    def _matching(self, graph):
+        matcher = Matcher(graph)
         matcher.set_settings(self._settings)
         matcher.match()
         
@@ -35,11 +36,20 @@ class Pipeline(object):
         write_agp(graph_pickle, agp_file)
         scaff_file = wdir + "/scaffolds.fa"
         write_fasta(ctg_file, agp_file, scaff_file)
+        try:
+            remove(agp_file) # cleaning up the agp_file
+        except Exception:
+            pass
         
     def scaffold(self):
-        self._graph_contruction()
-        #import time
-        #start_time = time.time()
-        #self._matching()
-        #self._print_fasta()
-        #print("--- %s seconds ---" % (time.time() - start_time))
+        print "Construct scaffolding graph"
+        start_time = time.time()
+        scaffgraph = self._graph_contruction()
+        print "Scaffolding graph constructed: %s" % (time.time() - start_time)
+        start_time2 = time.time()
+        self._matching(scaffgraph)
+        print "Scaffolding done: %s" % (time.time() - start_time2)
+        start_time3 = time.time()
+        self._print_fasta()
+        print "Results written to the disk: %s" % (time.time() - start_time3)
+        print "Overall time: %s" % (time.time() - start_time)

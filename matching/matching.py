@@ -8,8 +8,8 @@ class Matcher(object):
     
     _settings = None
     
-    def __init__(self):
-        pass
+    def __init__(self, graph):
+        self._IGORgraph = graph
     
     def set_settings(self, settings):
         self._settings = settings
@@ -55,8 +55,7 @@ class Matcher(object):
 
     def match(self):
         fragsize = self._settings.get("ins_size")
-        wdir = self._settings.get("scaff_dir")
-        matching_graph = pickle.load(open(wdir + "/igor_graph.cpickle", "rb"))
+        matching_graph = self._IGORgraph
         ourgraph = matching_graph.copy()   
         removed_nodes = {}
         nodes = set()
