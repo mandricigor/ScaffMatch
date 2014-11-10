@@ -4,7 +4,7 @@ from os import remove
 from fasta.io import write_agp, write_fasta
 from alignment.graph import GraphConstructor
 from matching.matching import Matcher
-
+import networkx as nx
 
 
 class Pipeline(object):
@@ -45,6 +45,9 @@ class Pipeline(object):
         print "Construct scaffolding graph"
         start_time = time.time()
         scaffgraph = self._graph_contruction()
+        #scaffgraph = nx.read_gpickle("igor_vasea_graph.cpickle")
+        self._settings.set("mean_cov", scaffgraph.node[scaffgraph.nodes()[0]]["mean_cov"])
+        self._settings.set("disp_cov", scaffgraph.node[scaffgraph.nodes()[0]]["disp_cov"])
         print "Scaffolding graph constructed: %s" % (time.time() - start_time)
         start_time2 = time.time()
         self._matching(scaffgraph)

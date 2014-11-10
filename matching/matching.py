@@ -17,7 +17,7 @@ class Matcher(object):
     def add_one_two(self, matching_graph):
         nodes = set([node[:-2] for node in matching_graph.nodes()])
         for node in nodes:
-            matching_graph.add_edge(node + "_1", node + "_2", weight=-1000)
+            matching_graph.add_edge(node + "_1", node + "_2", weight=0)
         return matching_graph
     
     
@@ -36,6 +36,7 @@ class Matcher(object):
     
         
     def greedy_matching(self, graph, nr_edges=0):
+        """This can be used for extra-large genomes"""
         from Queue import PriorityQueue
         pq = PriorityQueue()
         for x, y in graph.edges():
@@ -44,7 +45,8 @@ class Matcher(object):
         while not pq.empty() or len(matchings) < nr_edges:
             el = pq.get()
             w, el = el
-            if matchings.get(el[0], "vafli") == "vafli" and matchings.get(el[1], "vafli") == "vafli":
+            if not matchings.get(el[0]) and not matchings.get(el[1]):
+                #print "ADDING EDGE: ", el, w
                 matchings[el[0]] = el[1]
                 matchings[el[1]] = el[0]
         return matchings
@@ -55,44 +57,19 @@ class Matcher(object):
 
     def match(self):
         fragsize = self._settings.get("ins_size")
-        matching_graph = self._IGORgraph
-        ourgraph = matching_graph.copy()   
-        removed_nodes = {}
-        nodes = set()
-        repeat_nodes = set()
+        matching_graph = self._IGORgraph # original graph
+
+        ourgraph = matching_graph.copy() # 1st copy of the graph
+        ourgraph2 = ourgraph.copy()
+
+        nodes = set() # node set
+        repeat_nodes = set() # the set of nodes that are deemed to have repeats
+        
+        # repeats
         for node in ourgraph.nodes():
-            if ourgraph.node[node]["cov"] > self._settings.get("mean_cov") + 2 * self._settings.get("disp_cov"):
-                print "REPEAT:", node
-                repeat_nodes.add(node[:-2])
-       
-        edges_to_remove = []
-        for x, y in ourgraph.edges():
-            dist = ourgraph.edge[x][y]["dist"]
-            weight = ourgraph.edge[x][y]["weight"]
-            if weight < 1:
-                edges_to_remove.append((x, y))
-
-
-        for x, y in edges_to_remove:
-            ourgraph.remove_edge(x, y)
-
-        #EXPERIMENT
-        edges_to_delete = []
-        for x, y in ourgraph.edges():
-            if x.split(":")[0] != y.split(":")[0]:
-                edges_to_delete.append((x, y))
-        for x, y in edges_to_delete:
-            if ourgraph.has_edge(x, y):
-                ourgraph.remove_edge(x, y)
-
-
-
-
-        for node in repeat_nodes:
-            if ourgraph.has_node(node + "_1"):
-                ourgraph.remove_node(node + "_1")
-            if ourgraph.has_node(node + "_2"):
-                ourgraph.remove_node(node + "_2")
+            if ourgraph.node[node]["cov"] > self._settings.get("mean_cov") + 2.5 * self._settings.get("disp_cov"):
+                print "REPEAT:", node, ourgraph.node[node]["cov"]
+                repeat_nodes.add(node[:-2]) # we are storing here the nodes that are deemed to be repeats
 
         bad_edges = []
         for x, y in ourgraph.edges():
@@ -103,150 +80,99 @@ class Matcher(object):
             if ourgraph.has_edge(x, y):
                 ourgraph.remove_edge(x, y)
 
-        goodourgraph = ourgraph.copy() # this snapshot will be used later
-        for node in removed_nodes: # remove these nodes temporarily from the graph
-            ourgraph.remove_node(node)
-	matchings = self.greedy_matching(ourgraph)
-        #matchings = nx.max_weight_matching(ourgraph, maxcardinality=True)
-        newgraph = nx.Graph() # we need this graph for building the chains!
-        for node in ourgraph.nodes():
-            newgraph.add_node(node)
-        newgraph = self.add_one_two(newgraph)
-        for x, y in matchings.iteritems():
-            count = ourgraph.edge[x][y]['weight']
-            if not newgraph.has_edge(x, y):
-                newgraph.add_edge(x, y, weight=count) # populate newgraph with edges from original graph
-        chains = [] # now do chains    
-        for comp in nx.connected_components(newgraph):
-            edges = nx.subgraph(newgraph, comp).edges()
-            gr = nx.Graph()
-            for x, y in edges:
-                gr.add_edge(x, y)
-            ends = [x for x in gr.nodes() if gr.degree(x) == 1]
-            if len(ends) == 2:
-                start, end = ends
-                chain = nx.shortest_path(gr, source=start, target=end)
-                chains.append(chain)
-            else: # we have a cycle
-                edges2 = [(x, y) for (x, y) in edges if x[:-2] != y[:-2]]
-                minimal_edge = edges2[0]
-                for edge in edges2[1:]:
-                    if ourgraph.edge[edge[0]][edge[1]]['weight'] < ourgraph.edge[minimal_edge[0]][minimal_edge[1]]['weight']:
-                        minimal_edge = edge
-                gr.remove_edge(*minimal_edge)
+        # remove repeat nodes temporarily
+        for node in repeat_nodes:
+            if ourgraph.has_node(node + "_1"):
+                ourgraph.remove_node(node + "_1")
+            if ourgraph.has_node(node + "_2"):
+                ourgraph.remove_node(node + "_2")
+
+        # EDGES TO REMOVE DUE TO NOT ENOUGH WEIGHT
+        edges_to_remove = []
+        for x, y in ourgraph.edges():
+            dist = ourgraph.edge[x][y]["dist"]
+            weight = ourgraph.edge[x][y]["weight"]
+            if weight <= 5: # this is the place where we skip edges that are suspicious due to low weight
+                edges_to_remove.append((x, y))
+        for x, y in edges_to_remove: # and now boom! remove them at all (for now at all, who knows...)
+            ourgraph.remove_edge(x, y)
+
+
+
+        goodourgraph = ourgraph.copy() # this snapshot will be used later, this is the so-called CLEAN GRAPH, without repeats
+
+        for i in range(1):
+	    #matchings = self.greedy_matching(ourgraph)
+            matchings = nx.max_weight_matching(ourgraph) # MAX WEIGHT MATCHING IS BETTER, GUYS!
+            print len(matchings), "THIS NUMBER OF NODES"
+
+            price = 0
+            for x, y in matchings.iteritems():
+                if x < y:
+                    price += ourgraph.edge[x][y]["weight"]
+
+            newgraph = nx.Graph() # we need this graph for building the chains!
+            for node in ourgraph.nodes():
+                newgraph.add_node(node)
+
+            newgraph = self.add_one_two(newgraph) # this graph now contains "double" edges between the strands of the same node
+            for x, y in matchings.iteritems():
+                count = ourgraph.edge[x][y]['weight']
+                if not newgraph.has_edge(x, y):
+                    newgraph.add_edge(x, y, weight=count) # populate newgraph with edges from original graph
+
+            """At this point we have a graph which contains matched edges, but DOES NOT contain double edges"""
+
+            mines = []
+
+            chains = [] # now do chains    
+            """Now, we split the newgraph into connected components. Each connected component represents
+            either a chain, or a cycle."""
+            for comp in nx.connected_components(newgraph):
+                edges = nx.subgraph(newgraph, comp).edges() # connected component's edges
+                gr = nx.Graph()
+                for x, y in edges:
+                    gr.add_edge(x, y)
                 ends = [x for x in gr.nodes() if gr.degree(x) == 1]
-                print ends
-                start, end = ends
-                chain = nx.shortest_path(gr, source=start, target=end)
-                chains.append(chain)
-        ######################################################### join some of the chains now ##############
-        mbchains = []
-        remove_from_chains = []
-        for i in range(len(chains)):
-            ch = chains[i]
-            if len(ch) <= 2:
-                mbchains.extend(ch)
-                remove_from_chains.append(ch)
-            else:
-                mbchains.extend([ch[0], ch[-1]])
-    
-        chains = [x for x in chains if x not in remove_from_chains]
-        mbchains = mbchains + removed_nodes.keys()
-    
-    
-        ourgraph2 = goodourgraph.copy()
-        nodes_to_remove = []
-        for node in goodourgraph.nodes():
-            if node not in mbchains:
-                nodes_to_remove.append(node)
-        for node in nodes_to_remove:
-            ourgraph2.remove_node(node)
-    
-        ourgraph2 = self.add_one_two(ourgraph2)
-    
-    
-        #matchings = nx.max_weight_matching(ourgraph2, maxcardinality=True)
-        matchings = self.greedy_matching(ourgraph2)
-    
-        newgraph = nx.Graph()
-    
-    
-        for node in ourgraph2.nodes():
-            newgraph.add_node(node)
-    
-    
-        newgraph = self.add_one_two(newgraph)
-    
-        for x, y in matchings.iteritems():
-            if x[:-2] == y[:-2]:
-                continue
-            count = goodourgraph.edge[x][y]['weight']
-            if not newgraph.has_edge(x, y):
-                newgraph.add_edge(x, y, count=count)
-        chains2 = []
-        for comp in nx.connected_components(newgraph):
-            edges = nx.subgraph(newgraph, comp).edges()
-            gr = nx.Graph()
-            for x, y in edges:
-                gr.add_edge(x, y)
-            ends = [x for x in gr.nodes() if gr.degree(x) == 1]
-            if len(ends) == 2:
-                start, end = ends
-                chain = nx.shortest_path(gr, source=start, target=end)
-                chains2.append(chain)
-            else: # we have a cycle
-                edges2 = [(x, y) for (x, y) in edges if x[:-2] != y[:-2]]
-                minimal_edge = edges2[0]
-                for edge in edges2[1:]:
-                    if ourgraph2.edge[edge[0]][edge[1]]['weight'] < ourgraph2.edge[minimal_edge[0]][minimal_edge[1]]['weight']:
-                        minimal_edge = edge
-                gr.remove_edge(*minimal_edge)
-                ends = [x for x in gr.nodes() if gr.degree(x) == 1]
-                start, end = ends
-                chain = nx.shortest_path(gr, source=start, target=end)
-                chains2.append(chain)
-        real_chains = []
-        for chain in chains2:
-            chain_ends = []
-            for ch in chains:
-                chain_ends.extend([ch[0][:-2], ch[-1][:-2]])
-            if chain[0][:-2] not in chain_ends and chain[-1][:-2] not in chain_ends:
-                real_chains.append(chain) # this is a separate chain
-            else:
-                chain1, chain2 = None, None
-                for ch in chains:
-                    if chain[0] in ch:
-                        chain1 = ch
-                    if chain[-1] in ch:
-                        chain2 = ch
-                if chain1 != chain2 and chain1 != None and chain2 != None:
-                    chains = [x for x in chains if x not in (chain1, chain2)]
-                    if chain[0][:-2] == chain1[-1][:-2] and chain[-1][:-2] == chain2[0][:-2]:
-                        print "deci bine"
-                        newchain = chain1[:-2] + chain + chain2[2:]
-                    elif chain[0][:-2] == chain1[0][:-2] and chain[-1][:-2] == chain2[-1][:-2]:
-                        print "deci iaca bine"
-                        newchain = list(reversed(chain1))[:-2] + chain + list(reversed(chain2))[2:]
-                    elif chain[0][:-2] == chain1[0][:-2] and chain[-1][:-2] == chain2[0][:-2]:
-                        print "deci super"
-                        newchain = list(reversed(chain1))[:-2] + chain + chain2[2:]
-                    elif chain[0][:-2] == chain1[-1][:-2] and chain[-1][:-2] == chain2[-1][:-2]:
-                        print "deci super puper"
-                        newchain = chain1[:-2] + chain + list(reversed(chain2))[2:]
-                    chains.append(newchain)
-    
-        for ch in chains:
-            real_chains.append(ch)
-        # now filter just those chains that are of length > 3
-        chains = []
-        for ch in real_chains:
-            if len(ch) > 4:
-                chains.append(ch)
+                if len(ends) == 2: # this means that we have a chain, that's good, guys!
+                    start, end = ends
+                    chain = nx.shortest_path(gr, source=start, target=end) # shortest path is the chain we are searching for
+                    chains.append(chain)
+                else: # we have a cycle
+                    edges2 = [(x, y) for (x, y) in edges if x[:-2] != y[:-2]]
+                    minimal_edge = edges2[0]
+                    for edge in edges2[1:]:
+                        if ourgraph.edge[edge[0]][edge[1]]['weight'] < ourgraph.edge[minimal_edge[0]][minimal_edge[1]]['weight']:
+                            minimal_edge = edge
+                    mines.append(minimal_edge)
+                    gr.remove_edge(*minimal_edge)
+                    ends = [x for x in gr.nodes() if gr.degree(x) == 1]
+                    start, end = ends
+                    chain = nx.shortest_path(gr, source=start, target=end)
+                    chains.append(chain)
+            for mine1, mine2 in mines:
+                if ourgraph.has_edge(mine1, mine2):
+		    ourgraph.remove_edge(mine1, mine2)
+
+
+        """And now, we have chains matched by matching"""
+
         final_graph = nx.DiGraph()
-    
+
+        # it is possible to introduce a check here
+        # check how the chains were constructed
+        # for example, if a node is "jumpable", 
+        # check whether there exists a link
+        # between its neighbor nodes
+
+
+        # start filling out the graph!!!!!!!!!!
+ 
         NEXT = {}
         PREV = {}
         for chain in chains:
+            if len(chain) < 4:
+                continue
             chain = list(reversed(chain))
             if len(chain) == 2:
                 final_graph.add_node(chain[0][:-2], orien=False)
@@ -279,12 +205,9 @@ class Matcher(object):
                             final_graph.add_node(x[:-2], orien=True)
                             final_graph.add_node(y[:-2], orien=False)
                             orients.extend([True, False])
-                            
-                        
                         pair = tuple(sorted([x, y]))
                         distance = matching_graph.edge[pair[0]][pair[1]]["dist"]
                         final_graph.add_edge(x[:-2], y[:-2], dist=max(0, distance))
-                        print "ADDING EDGE:", x[:-2], y[:-2]
                         NEXT[x[:-2]] = y[:-2]
                         PREV[y[:-2]] = x[:-2]
                     else:
@@ -293,7 +216,7 @@ class Matcher(object):
                                 final_graph.add_node(y[:-2], orien=False) # done
                                 orients.append(False)
                             else:
-                                final_graph.add_node(y[:-2], orien=False)
+                                final_graph.add_node(y[:-2], orien=False) # this is very strange!!!!!!!!!1
                                 orients.append(False)
                         elif ori == ("2", "1"):
                             if orients[-1] == True:
@@ -319,42 +242,49 @@ class Matcher(object):
                         pair = tuple(sorted([x, y]))
                         distance = matching_graph.edge[pair[0]][pair[1]]["dist"]
                         final_graph.add_edge(x[:-2], y[:-2], dist=max(0, distance))
-                        print "ADDING EDGE:", x[:-2], y[:-2]
                         NEXT[x[:-2]] = y[:-2]
                         PREV[y[:-2]] = x[:-2]
-    
-    
+
+
+
         deci_removed_contigs = set([x[:-2] for x in goodourgraph.nodes() if x[:-2] not in final_graph.nodes()])
         deci_removed_contigs = list(deci_removed_contigs)
-        inserted_contigs = []
-        removed_contigs = [x for x in deci_removed_contigs if x not in inserted_contigs and x not in repeat_nodes]
-        print len(removed_contigs), "LEN OF REMOVED CONTIGS"   
- 
+        removed_contigs = [x for x in deci_removed_contigs] + list(repeat_nodes)
+        print len(removed_contigs), "THIS MANY NOT MATCHED"   
+	print len(final_graph.nodes()), "THIS MANY IN THE FINAL GRAPH"
+        print len(final_graph.edges()), "THIS MANY EDGES IN THE FINAL GRAPH"
+
         # first round of construction!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
         for i in range(1):
             SLOTS = {}
             for x, y in final_graph.edges():
                 SLOTS[(x, y)] = []
             for contig in removed_contigs:
-                ones = goodourgraph.edge[contig + "_1"]
-                twos = goodourgraph.edge[contig + "_2"]
-    
+                if contig  in repeat_nodes:
+                    ggoodourgraph = ourgraph2
+                else:
+                    ggoodourgraph = goodourgraph
+                ones = {}
+                for x, y in ggoodourgraph.edge[contig + "_1"].iteritems():
+                #for x, y in ourgraph2.edge[contig + "_1"].iteritems():
+                    if x[:-2] in final_graph.nodes():
+                        ones[x] = y
+                twos = {}
+                for x, y in ggoodourgraph.edge[contig + "_2"].iteritems():
+                #for x, y in ourgraph2.edge[contig + "_2"].iteritems():
+                    if x[:-2] in final_graph.nodes():
+                        twos[x] = y
                 reject = False
-    
                 slot_array = []
-    
-    
                 for her in ones:
-    
                     slot_dict = {}
                     strand = int(her[-1])
-                    support = goodourgraph.edge[contig + "_1"][her]["weight"]
-    
+                    support = ourgraph2.edge[contig + "_1"][her]["weight"]
                     if her[:-2] not in final_graph.nodes():
                         continue
                     else:
                         ori = final_graph.node[her[:-2]]["orien"]
-    
                     if ori == True and strand == 2:
                         newori = True
                         direction = "->"
@@ -375,15 +305,10 @@ class Matcher(object):
                             distance = final_graph.edge[her[:-2]][NEXT[her[:-2]]]["dist"]
                             dist = ones[her]["dist"]
                             aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[NEXT[her[:-2]] + "_1"]["width"] > fragsize
-    
                             if aa:
                                 pass
                             else:
-                                #reject = True
-                                #break
-                                ##if dist > distance + matching_graph.node[NEXT[her[:-2]] + "_1"]["width"]:
-                                    ##slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]])
-                                if dist > distance:#matching_graph.node[contig + "_1"]["width"] > distance + 900:
+                                if dist > distance:
                                     slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]])
                         except Exception:
                             reject = True
@@ -397,11 +322,6 @@ class Matcher(object):
                             if aa:
                                 pass
                             else:
-                                #reject = True
-                                #break
-                                ##if dist > distance + matching_graph.node[PREV[her[:-2]] + "_1"]["width"]:
-    
-                                    ##slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
                                 if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
                                     slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
                             dist = max(0, distance - dist)
@@ -425,24 +345,21 @@ class Matcher(object):
                     if not este:
                         slot_array.append(slot_dict)
     
-    
                 if reject == True:
                     continue
     
-    
-    
                 for her in twos:
-    
                     slot_dict = {}
                     strand = int(her[-1])
-                    support = goodourgraph.edge[contig + "_2"][her]["weight"]
+                    #support = goodourgraph.edge[contig + "_2"][her]["weight"]
+                    support = ourgraph2.edge[contig + "_2"][her]["weight"]
     
                     if her[:-2] not in final_graph.nodes():
                         continue
                     else:
                         ori = final_graph.node[her[:-2]]["orien"]
     
-                    if ori == True and strand == 2:
+                    if ori == True and strand == 2: 
                         newori = False
                         direction = "->"
                     elif ori == True and strand == 1:
@@ -462,17 +379,11 @@ class Matcher(object):
                             distance = final_graph.edge[her[:-2]][NEXT[her[:-2]]]["dist"]
                             dist = twos[her]["dist"]
                             aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[NEXT[her[:-2]] + "_1"]["width"] > fragsize
-    
-    
                             if aa:
                                 pass
                             else:
-                                #reject = True
-                                #break
                                 if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
                                     slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]])
-                                #if dist > distance + matching_graph.node[NEXT[her[:-2]] + "_1"]["width"]:
-                                    #slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]]
                         except Exception:
                             break
                     elif direction == "<-":
@@ -484,11 +395,6 @@ class Matcher(object):
                             if aa:
                                 pass
                             else:
-                                #reject = True
-                                #break
-                                #if dist > distance + matching_graph.node[PREV[her[:-2]] + "_1"]["width"]:
-                                    #slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
-    
                                 if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
                                     slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
                             dist = max(0, distance - dist)
@@ -537,9 +443,8 @@ class Matcher(object):
                 try:
                     SLOTS[slot].append(best_slot)
                 except Exception:
-                    print slot, contig, final_graph.edge["NC_010079:120:2112133:2114005"]
+                    print slot, contig
     
-                inserted_contigs.append(contig)
     
             to_be_inserted = []
     
@@ -553,9 +458,6 @@ class Matcher(object):
                     orien = contig["orien"]
                     dist = contig["dist"]
                     distance = final_graph.edge[x][y]["dist"]
-                    if "NC_010063" in node:
-                        print "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS"
-                        continue
                     final_graph.add_node(node, orien=orien)
                     final_graph.add_edge(x, node, dist=dist)
                     final_graph.add_edge(node, y, dist=distance)
@@ -563,14 +465,6 @@ class Matcher(object):
                     to_be_inserted.append(node)
                 else:
                     slots = self.multikeysort(SLOTS[(x, y)], ["dist"])
-                    hui = False
-                    for sl in slots:
-                        if "NC_010063" in sl:
-                            print "SSSSSSSSSSSSJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ"
-                            hui = True
-                            break
-                    if hui == True:
-                        continue
                     slots = self.multikeysort(SLOTS[(x, y)], ["dist"])
                     for sl in slots:
                         final_graph.add_node(sl["contig"], orien=sl["orien"])
@@ -578,12 +472,10 @@ class Matcher(object):
                     final_graph.add_edge(slots[-1]["contig"], y, dist=100)
                     for i in range(len(slots) - 1):
                         final_graph.add_edge(slots[i]["contig"], slots[i + 1]["contig"], dist=100)
-    
-    
-            removed_contigs = [x for x in removed_contigs if x not in inserted_contigs]
-            inserted_contigs = []
-    
-    
+ 
+    	print len(final_graph.nodes()), "THIS MANY IN THE FINAL GRAPH"
+        print len(final_graph.edges()), "THIS MANY EDGES IN THE FINAL GRAPH"
+
         for node in final_graph.nodes():
             if "orien" in final_graph.node[node].keys():
                 pass
@@ -591,13 +483,21 @@ class Matcher(object):
                 final_graph.node[node]["orien"] = False
             final_graph.node[node]['width'] = matching_graph.node[node + "_1"]["width"]
 
-        for x in repeat_nodes:
-            print "ADDING:", x
-            final_graph.add_node(x, orien=False, width=matching_graph.node[x + "_1"]["width"])
+        for x in matching_graph.nodes():
+            if not final_graph.has_node(x[:-2]):
+                final_graph.add_node(x[:-2], orien=False, width=matching_graph.node[x[:-2] + "_1"]["width"])
            
-        print len(final_graph.nodes())
         wdir = self._settings.get("scaff_dir")
+ 
+        print len(final_graph.edges()), "EDGES"
+        print len(final_graph.nodes()), 'NODES'
+        a = set()
+        for x, y in final_graph.edges():
+            if x < y:
+                a.add((x, y))
+            else:
+                a.add((x, y))
+        print len(a)
+
         nx.write_gpickle(final_graph, wdir + "/final_graph.cpickle")
     
-    
-

@@ -1,11 +1,11 @@
 
-
-from collections import deque
+from random import random
+from collections import deque, Counter
 import networkx as nx
 import fasta.io as io
-from math import sqrt
-
-
+from math import sqrt, log
+import numpy
+import operator
 
 class Link(object):
     def __init__(self, **args):
@@ -21,7 +21,8 @@ class GraphConstructor(object):
     _settings = None
     
     def __init__(self):
-        self._cov = {}
+        self._covs = {}
+        self._hits = {}
         self._sizes = {}
         self._dist = {}
         self._IGORgraph = nx.Graph() # the main scaffolding graph
@@ -30,7 +31,7 @@ class GraphConstructor(object):
         self._settings = settings
         
         
-    def _read_in_chunks(self, file_object, chunk_size=2000000):
+    def _read_in_chunks(self, file_object, chunk_size=10000000000):
         """Lazy function (generator) to read a file piece by piece.
         Default chunk size: 1k."""
         while True:
@@ -50,12 +51,14 @@ class GraphConstructor(object):
         unmapped = self._settings.get("unmapped_file")
     
         curlen1 = curlen2 = 0
-   
+  
+	key_size = self._settings.get("key_size")
+ 
         for lib_id in libraries.keys()[0:1]: # stub for multiple libraries
             lib = libraries[lib_id]
             sam1, sam2 = lib["sam1"], lib["sam2"]
             with open(mapped, 'w') as mapped, open(unmapped, 'w') as unmapped, \
-                    open(sam1) as xx, open(sam2) as yy:
+                    open(sam1) as xx, open(sam2) as yy, open("multiple.txt", "w") as mtp, open("same.txt", "w") as same:
                 fileiter1 = self._read_in_chunks(xx)
                 fileiter2 = self._read_in_chunks(yy)
     
@@ -129,21 +132,73 @@ class GraphConstructor(object):
                             """skip these reads:
                             they are multiple"""
                             for i in range(c1):
-                                base1.popleft()
+                                mtp.write("%s\n" % base1.popleft())
                             for i in range(c2):
-                                base2.popleft()                            
+                                mtp.write("%s\n" % base2.popleft())
                         else:
                             line1, line2 = base1.popleft().split(), base2.popleft().split()
-                            if line1[2] == "*" or line2[2] == "*":
+
+			    if line1[2] != "*":
+				first = self._covs.get(line1[2], {"len": 0, "count": 0})
+				first["len"] += len(line1[9])
+                                first["count"] += 1
+				self._covs[line1[2]] = first
+			    if line2[2] != "*":
+				second = self._covs.get(line2[2], {"len": 0, "count": 0})
+				second["len"] += len(line2[9])
+                                second["count"] += 1
+                                self._covs[line2[2]] = second
+
+                            if line1[2] == "*" or line2[2] == "*": # we use this with bowtie2
                                 unmapped.write(self._format_sam_line(line1, line2))
                             else:
                                 if line1[2] != line2[2]: # discard those who has mapped to the same contig
-                                    mapped.write(self._format_sam_line(line1, line2))
-                                    self._paired_read_to_graph(line1, line2, lib_id)
+				    mismatches1, mismatches2 = line1[13].split(":")[-1], line2[13].split(":")[-1]
+				    if int(mismatches1) > 1000 and int(mismatches2) > 1000:
+				        continue
+				    else:
+                                        mapped.write(self._format_sam_line(line1, line2))
+                                        self._paired_read_to_graph(line1, line2, lib_id)
+                                else:
+                                    same.write(self._format_sam_line(line1, line2))
                     leftover1 = "\n".join(base1) + "\n" + leftover1
                     leftover2 = "\n".join(base2) + "\n" + leftover2 
-        self._build_graph()           
+        self._build_graph()       
+        for x in self._covs.keys():
+            width = self._IGORgraph.node[x + "_1"]["width"]
+	    self._IGORgraph.node[x + "_1"]["cov"] = self._covs[x]["len"] * 1.0 / width
+            self._IGORgraph.node[x + "_2"]["cov"] = self._covs[x]["len"] * 1.0 / width
+
+
+        # stub
+        for node in self._IGORgraph.nodes():
+            if "cov" not in self._IGORgraph.node[node]:
+                self._IGORgraph.node[node]["cov"] = 1
+
+
+	meancov = 0
+        counter = 0
+        std   = 0
+        covs = []
+        
+        for x in self._covs.keys():
+            meancov += self._IGORgraph.node[x + "_1"]["cov"]
+            counter += 1
+            covs.append(self._IGORgraph.node[x + "_1"]["cov"])
+
+        meancov *= 1.0
+        meancov /= counter
+
+        dispcov = sqrt(sum([(x - meancov) * (x - meancov) for x in covs]) / counter)
+
+        self._settings.set("mean_cov", meancov)
+        self._settings.set("disp_cov", dispcov)
         # now the graph should be ready for the next stage
+        #self._contigs_coverage2()
+        for node in self._IGORgraph.nodes():
+            self._IGORgraph.node[node]["mean_cov"] = meancov
+            self._IGORgraph.node[node]["disp_cov"] = dispcov
+        nx.write_gpickle(self._IGORgraph, "igor_vasea_graph.cpickle")
         return self._IGORgraph
 
 
@@ -167,16 +222,30 @@ class GraphConstructor(object):
  
         # first leg of the read
         oflag1, rname1, lpos1 = line1[1], line1[2], int(line1[3])
+
+        # to remove if something
+        #if oflag1 == "0" and lpos1 > ins_size + 3 * std_dev:
+        #    return
+        #if oflag1 != "0" and lpos1 < len(line1[9]) - 3 * std_dev:
+        #    return
         width1 = self._IGORgraph.node[rname1 + "_1"]["width"]
         rpos1 = lpos1 + len(line1[9])
         
         # second leg of the read
         oflag2, rname2, lpos2 = line2[1], line2[2], int(line2[3])
+        #if oflag2 == "0" and lpos2 > ins_size + 3 * std_dev:
+        #    return
+        #if oflag2 != "0" and lpos2 < len(line2[9]) - 3 * std_dev:
+        #    return
         width2 = self._IGORgraph.node[rname2 + "_1"]["width"]
         rpos2 = lpos2 + len(line2[9])
+
+
         op, oq = self._get_orientation(oflag1, oflag2, int(self._settings.get("pair_mode")))
         orients = (op, oq)
-                
+               
+
+ 
         if orients == (0, 0):
             distance = ins_size - (width1 - lpos1) - rpos2
             edge = (rname1 + "_1", rname2 + "_2")
@@ -190,15 +259,26 @@ class GraphConstructor(object):
             distance = ins_size - rpos1 - rpos2
             edge = (rname1 + "_2", rname2 + "_2")
 
+
+        #if (rname1 == "CP000144:5:42563:42783" and rname2 == "CP000144:6:42807:43402") or \
+        #    (rname1 == "CP000144:6:42807:43402" and rname2 == "CP000144:5:42563:42783"):
+        #    print rname1, rname2, lpos1, lpos2, oflag1, oflag2, orients, distance, edge
+
+
+
+
+
+
         #print edge, orients, distance
-        if -std_dev * 2 <= distance <= ins_size + 2 * std_dev:
+        if -std_dev * 3 <= distance <= ins_size + 3 * std_dev:
             pair = tuple(sorted(edge))
-            # change the order of positions if needed
             if rname1 < rname2:
                 pos1, pos2 = lpos1, lpos2
             else:
                 pos1, pos2 = lpos2, lpos1
-    
+                line1, line2 = line2, line1 # used to calculate entropy
+   
+	    # removee laterrrrrrrrrrrrr
             para = self._dist.get(pair, [])
             link_dict = {"pos1": pos1, "pos2": pos2, "dist": distance,
                             "ins": ins_size, "std": std_dev}
@@ -206,7 +286,18 @@ class GraphConstructor(object):
             para.append(link)
 	    self._dist[pair] = para
                 
-    
+
+    def _entropy(self, s):
+        """Compute entropy of a read"""
+        arr = []
+        for i in range(len(s) - 1):
+            arr.append(s[i: (i + 2)])
+        s = arr
+        p, lns = Counter(s), float(len(s))
+        return -sum( count/lns * log(count/lns, 2) for count in p.values())   
+
+
+ 
     def _get_orientation(self, oflag1, oflag2, pair_mode):
         """Gets orientation from SAM object for pairs"""
         if oflag1 == "0":
@@ -222,9 +313,23 @@ class GraphConstructor(object):
         if pair_mode == 2:
             o1 = 1 - o1
         return o1, o2
-    
+
+
     
     def _contigs_coverage(self):
+        """Calculate the coverage and the standard deviation.
+        Initialize IGORgraph with nodes"""
+        seqs = io.load_fasta(self._settings.get("ctg_fasta"))
+        for name, seq in seqs.items():
+            tmp = name.split(" ")
+            name = tmp[0]
+            l = len(seq)
+            self._IGORgraph.add_node(name + "_1", {'seq': seq, 'width': l}) # first strand
+            self._IGORgraph.add_node(name + "_2", {'seq': seq, 'width': l}) # second strand
+
+
+   
+    def _contigs_coverage2(self):
         """Calculate the coverage and the standard deviation.
         Initialize IGORgraph with nodes"""
         seqs = io.load_fasta(self._settings.get("ctg_fasta"))
@@ -236,15 +341,12 @@ class GraphConstructor(object):
             tmp = name.split(" ")
             name = tmp[0]
             l = len(seq)
-            try:
-                cov = self._settings.get("cov")[name] * 1.0 / l
-            except Exception:
-                cov = 0
+            cov = self._IGORgraph.degree(name + "_1") * 1.0 / l
             mean_cov += cov
             counter += 1
             covs.append(cov)
-            self._IGORgraph.add_node(name + "_1", {'seq': seq, 'width': l, 'cov': cov}) # first strand
-            self._IGORgraph.add_node(name + "_2", {'seq': seq, 'width': l, 'cov': cov}) # second strand
+            self._IGORgraph.node[name + "_1"]['cov'] = cov
+            self._IGORgraph.node[name + "_2"]['cov'] = cov
         mean_cov *= 1.0
         mean_cov /= counter
         
@@ -265,13 +367,110 @@ class GraphConstructor(object):
         "The Greedy Path-Merging Algorithm for Contig Scaffolding"
         by Huson, Reinert and Myers, 2002
         """
+        nodedict = {}
         for node1, node2 in self._dist:
+            ar = self._dist.get((node1, node2), [])
+            ar1 = nodedict.get(node1, {})
+            ar2 = nodedict.get(node2, {})
+          
+            for link in ar:
+                pos1 = link.pos1
+                aaa = ar1.get(pos1, [])
+                aaa.append(node2)
+                ar1[pos1] = aaa
+
+                pos2 = link.pos2
+                bbb = ar2.get(pos2, [])
+                bbb.append(node1)
+                ar2[pos2] = bbb
+
+            nodedict[node1] = ar1
+            nodedict[node2] = ar2
+                 
+	#print nodedict
+        import collections
+        with open("statistics.txt", "w") as f, open("distribution.txt", "w") as f1:
+            for node in nodedict:
+	        f.write("%s:\n" % node)
+                posdict = nodedict[node]
+                od = collections.OrderedDict(sorted(posdict.items()))
+                for k, v in od.iteritems():
+                    f.write("%s: %s\n" % (k, ",".join(v)))
+                    #f.write("%s: %s\n" % (k, len(v)))
+                f.write("-----------------------------------------------------\n")
+
+                # but now try to see how they are arranged on the contig:
+                positions = {}
+                for k, v in od.iteritems():
+                    for vv in v:
+                        pos = positions.get(vv, [])
+                        pos.append(k)
+                        positions[vv] = pos
+
+                f1.write("%s:\n" % node)
+                for key, arr in positions.iteritems():
+                    f1.write("\t%s: " % key)
+                    f1.write("%s\n" % len(arr))
+                f1.write("-----------------------------------------------------------------------\n")
+                    
+
+
+        possible = 0
+
+        for node1, node2 in self._dist:
+
+
+            n1, n2 = node1.split(":"), node2.split(":")
+            if n1[0] == n2[0] and abs(int(n1[1]) - int(n2[1])) == 1:
+                possible += 1
+            
+
+
+
             links = self._dist[(node1, node2)]
-            dists = [x.dist for x in links]
-            if dists:
-                linkw = len(dists)
-                avgdist = float(sum(dists)) / linkw                
-            else:
-                avgdist = None
-            if avgdist:
-                self._IGORgraph.add_edge(node1, node2, weight=linkw, dist=avgdist)
+
+            # ------------------------
+            linkdists = {}
+            for link in links:
+                linkdists[link] = link.dist
+            sorted_x = sorted(linkdists.items(), key=operator.itemgetter(1))
+
+        
+            median = len(sorted_x) / 2
+          
+            p = 0
+            q = 0
+            newmean = 0
+            newstd = 0
+            size = 0
+            
+            std_dev = int(self._settings.get("std_dev"))
+
+            lowerbound = sorted_x[median][1] - 3 * std_dev
+            upperbound = sorted_x[median][1] + 3 * std_dev
+            
+            iterator = 0
+            while iterator < len(linkdists) and sorted_x[iterator][1] < upperbound:
+                if lowerbound < sorted_x[iterator][1] < upperbound:
+                    size += 1
+                    p += sorted_x[iterator][1] * 1.0 / pow(std_dev, 2)
+                    q += 1.0 / pow(std_dev, 2)
+                    iterator += 1
+                else:
+                    iterator += 1
+
+            newmean = p / q
+            self._IGORgraph.add_edge(node1, node2, weight=size, dist=newmean)
+
+            # ------------------------
+
+
+            # comment it out for a moment while testing bundling step
+        with open("dist_stat.txt", "w") as f:
+            for x, y in self._IGORgraph.edges():
+                f.write("%s     %s        %s\n" % (x, y, self._IGORgraph.edge[x][y]["weight"]))
+
+
+        print "POSSIBLE:", possible
+
+
