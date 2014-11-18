@@ -57,6 +57,14 @@ class Matcher(object):
 
     def match(self):
         fragsize = self._settings.get("ins_size")
+        bundle_threshold = int(self._settings.get("bundle_threshold"))
+        matching_type = self._settings.get("matching")
+        if matching_type == "max_weight":
+            matching_function = nx.max_weight_matching
+        elif matching_type == "greedy":
+            matching_function = self.greedy_matching
+        else:
+            raise Exception("Unrecognized matching heuristic type: %s" % matching_type)
         matching_graph = self._IGORgraph # original graph
 
         ourgraph = matching_graph.copy() # 1st copy of the graph
@@ -92,7 +100,7 @@ class Matcher(object):
         for x, y in ourgraph.edges():
             dist = ourgraph.edge[x][y]["dist"]
             weight = ourgraph.edge[x][y]["weight"]
-            if weight <= 5: # this is the place where we skip edges that are suspicious due to low weight
+            if weight <= bundle_threshold: # this is the place where we skip edges that are suspicious due to low weight
                 edges_to_remove.append((x, y))
         for x, y in edges_to_remove: # and now boom! remove them at all (for now at all, who knows...)
             ourgraph.remove_edge(x, y)
@@ -102,8 +110,7 @@ class Matcher(object):
         goodourgraph = ourgraph.copy() # this snapshot will be used later, this is the so-called CLEAN GRAPH, without repeats
 
         for i in range(1):
-	    #matchings = self.greedy_matching(ourgraph)
-            matchings = nx.max_weight_matching(ourgraph) # MAX WEIGHT MATCHING IS BETTER, GUYS!
+            matchings = matching_function(ourgraph) # MAX WEIGHT MATCHING IS BETTER, GUYS!
             print len(matchings), "THIS NUMBER OF NODES"
 
             price = 0

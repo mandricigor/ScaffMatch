@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 '''
 Created on Jul 25, 2014
 
@@ -17,11 +19,10 @@ class Settings(object):
     _instance = None
     
     _settings = {
-                "aligner": "bowtie2",
-                "bundle_size": 1,
-                "key_size": 2,
                 "unmapped_file": "unmapped.txt",
-                "mapped_file": "mapped.txt"
+                "mapped_file": "mapped.txt",
+                "matching": "max_weight",
+                "bundle_threshold": 5
                 }
     
     def __new__(cls, *args, **kwargs):
@@ -47,16 +48,6 @@ class Settings(object):
 
 
 
-
-
-
-
-
-
-
-
-
-
 def parse_args():
     main_p = argparse.ArgumentParser()
     main_p.add_argument('-w', dest='scaff_dir', required=True, help='scaffolding directory')
@@ -66,6 +57,8 @@ def parse_args():
     main_p.add_argument('-i', dest='ins_size', required=True, help='insert size')
     main_p.add_argument('-p', dest='pair_mode', required=True, help='pair mode')
     main_p.add_argument('-s', dest='std_dev', required=True, help='standard deviation')
+    main_p.add_argument('-t', dest='bundle_threshold', required=False, default=5, help='bundle threshold')
+    main_p.add_argument('-g', dest='matching', required=False, default="max_weight", help='matching heuristic')
     return vars(main_p.parse_args())  
 
 
@@ -105,7 +98,3 @@ if __name__ == '__main__':
     scaffolder = Pipeline()
     scaffolder.set_settings(settings)
     scaffolder.scaffold()
-    
-    
-    
-    

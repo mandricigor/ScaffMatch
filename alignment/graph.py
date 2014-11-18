@@ -418,17 +418,7 @@ class GraphConstructor(object):
                     
 
 
-        possible = 0
-
         for node1, node2 in self._dist:
-
-
-            n1, n2 = node1.split(":"), node2.split(":")
-            if n1[0] == n2[0] and abs(int(n1[1]) - int(n2[1])) == 1:
-                possible += 1
-            
-
-
 
             links = self._dist[(node1, node2)]
 
@@ -474,6 +464,5 @@ class GraphConstructor(object):
                 f.write("%s     %s        %s\n" % (x, y, self._IGORgraph.edge[x][y]["weight"]))"""
 
 
-        print "POSSIBLE:", possible
 
 
