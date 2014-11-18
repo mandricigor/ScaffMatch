@@ -68,7 +68,7 @@ class Matcher(object):
         # repeats
         for node in ourgraph.nodes():
             if ourgraph.node[node]["cov"] > self._settings.get("mean_cov") + 2.5 * self._settings.get("disp_cov"):
-                print "REPEAT:", node, ourgraph.node[node]["cov"]
+                #print "REPEAT:", node, ourgraph.node[node]["cov"]
                 repeat_nodes.add(node[:-2]) # we are storing here the nodes that are deemed to be repeats
 
         bad_edges = []

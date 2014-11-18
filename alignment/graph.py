@@ -6,6 +6,7 @@ import fasta.io as io
 from math import sqrt, log
 import numpy
 import operator
+import os.path
 
 class Link(object):
     def __init__(self, **args):
@@ -49,7 +50,9 @@ class GraphConstructor(object):
         libraries = self._settings.get("libraries")
         mapped = self._settings.get("mapped_file")
         unmapped = self._settings.get("unmapped_file")
-    
+        wdir = self._settings.get("scaff_dir") 
+
+   
         curlen1 = curlen2 = 0
   
 	key_size = self._settings.get("key_size")
@@ -57,8 +60,8 @@ class GraphConstructor(object):
         for lib_id in libraries.keys()[0:1]: # stub for multiple libraries
             lib = libraries[lib_id]
             sam1, sam2 = lib["sam1"], lib["sam2"]
-            with open(mapped, 'w') as mapped, open(unmapped, 'w') as unmapped, \
-                    open(sam1) as xx, open(sam2) as yy, open("multiple.txt", "w") as mtp, open("same.txt", "w") as same:
+            with open(os.path.join(wdir, mapped), 'w') as mapped, open(os.path.join(wdir, unmapped), 'w') as unmapped, \
+                    open(sam1) as xx, open(sam2) as yy, open(os.path.join(wdir, "multiple.txt"), "w") as mtp, open(os.path.join(wdir, "same.txt"), "w") as same:
                 fileiter1 = self._read_in_chunks(xx)
                 fileiter2 = self._read_in_chunks(yy)
     
@@ -198,7 +201,7 @@ class GraphConstructor(object):
         for node in self._IGORgraph.nodes():
             self._IGORgraph.node[node]["mean_cov"] = meancov
             self._IGORgraph.node[node]["disp_cov"] = dispcov
-        nx.write_gpickle(self._IGORgraph, "igor_vasea_graph.cpickle")
+        #nx.write_gpickle(self._IGORgraph, "igor_vasea_graph.cpickle")
         return self._IGORgraph
 
 
@@ -389,7 +392,7 @@ class GraphConstructor(object):
                  
 	#print nodedict
         import collections
-        with open("statistics.txt", "w") as f, open("distribution.txt", "w") as f1:
+        """with open("statistics.txt", "w") as f, open("distribution.txt", "w") as f1:
             for node in nodedict:
 	        f.write("%s:\n" % node)
                 posdict = nodedict[node]
@@ -411,7 +414,7 @@ class GraphConstructor(object):
                 for key, arr in positions.iteritems():
                     f1.write("\t%s: " % key)
                     f1.write("%s\n" % len(arr))
-                f1.write("-----------------------------------------------------------------------\n")
+                f1.write("-----------------------------------------------------------------------\n")"""
                     
 
 
@@ -466,9 +469,9 @@ class GraphConstructor(object):
 
 
             # comment it out for a moment while testing bundling step
-        with open("dist_stat.txt", "w") as f:
+        """with open("dist_stat.txt", "w") as f:
             for x, y in self._IGORgraph.edges():
-                f.write("%s     %s        %s\n" % (x, y, self._IGORgraph.edge[x][y]["weight"]))
+                f.write("%s     %s        %s\n" % (x, y, self._IGORgraph.edge[x][y]["weight"]))"""
 
 
         print "POSSIBLE:", possible
