@@ -8,9 +8,9 @@ Created on Jul 25, 2014
 
 import argparse
 import sys
-from settings import Settings
+import logging
 from pipeline.pipeline import Pipeline
-
+from copy import copy
 
 
 
@@ -24,6 +24,7 @@ class Settings(object):
                 "matching": "max_weight",
                 "bundle_threshold": 5
                 }
+    _defaults = copy(_settings)
     
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
@@ -45,7 +46,12 @@ class Settings(object):
         return "\n".join(["%s: %s" % x for x in self._settings.iteritems()])
 
 
-
+    def iteritems(self):
+        it = []
+        for s, v in self._settings.iteritems():
+            if s not in self._defaults and s != "logger":
+                it.append((s, v))
+        return it
 
 
 def parse_args():
@@ -59,6 +65,7 @@ def parse_args():
     main_p.add_argument('-s', dest='std_dev', required=True, help='standard deviation')
     main_p.add_argument('-t', dest='bundle_threshold', required=False, default=5, help='bundle threshold')
     main_p.add_argument('-g', dest='matching', required=False, default="max_weight", help='matching heuristic')
+    main_p.add_argument('-l', dest='log_file', required=False, help='log file')
     return vars(main_p.parse_args())  
 
 
@@ -91,10 +98,31 @@ def prepare_libraries(args_dict):
 
 
 if __name__ == '__main__':
+    # Parse arguments
     args = parse_args()
     prepare_libraries(args)
     settings = Settings()
     settings.update(args)
+    # Set up logging
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    log_file = settings.get("log_file")
+    if not log_file:
+        handler = logging.StreamHandler(sys.stdout)
+    else:
+        handler = logging.FileHandler(settings.get("log_file"))
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    settings.set("logger", logger)
+    # Print out the settings
+    logger.info("**--**--**--**--**--**--**--**--**--**--**--**--**--**--**--**--**")
+    logger.info("Settings used for this run of ScaffMatch are:")
+    for s, v in settings.iteritems():
+        logger.info("    %s  -- %s" % (s, v)) 
+    # Feed the settings to the scaffolder pipeline
     scaffolder = Pipeline()
     scaffolder.set_settings(settings)
+    # Go!
     scaffolder.scaffold()

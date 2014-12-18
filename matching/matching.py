@@ -1,3 +1,4 @@
+import logging
 import networkx as nx
 import pickle
 
@@ -46,7 +47,6 @@ class Matcher(object):
             el = pq.get()
             w, el = el
             if not matchings.get(el[0]) and not matchings.get(el[1]):
-                #print "ADDING EDGE: ", el, w
                 matchings[el[0]] = el[1]
                 matchings[el[1]] = el[0]
         return matchings
@@ -56,10 +56,11 @@ class Matcher(object):
 
 
     def match(self):
+        logger = self._settings.get("logger")
         fragsize = self._settings.get("ins_size")
         bundle_threshold = int(self._settings.get("bundle_threshold"))
         matching_type = self._settings.get("matching")
-        if matching_type == "max_weight":
+        if matching_type == "max_weight" or matching_type == "backbone":
             matching_function = nx.max_weight_matching
         elif matching_type == "greedy":
             matching_function = self.greedy_matching
@@ -76,7 +77,6 @@ class Matcher(object):
         # repeats
         for node in ourgraph.nodes():
             if ourgraph.node[node]["cov"] > self._settings.get("mean_cov") + 2.5 * self._settings.get("disp_cov"):
-                #print "REPEAT:", node, ourgraph.node[node]["cov"]
                 repeat_nodes.add(node[:-2]) # we are storing here the nodes that are deemed to be repeats
 
         bad_edges = []
@@ -111,7 +111,7 @@ class Matcher(object):
 
         for i in range(1):
             matchings = matching_function(ourgraph) # MAX WEIGHT MATCHING IS BETTER, GUYS!
-            print len(matchings), "THIS NUMBER OF NODES"
+            logger.info("%s THIS NUMBER OF NODES" % len(matchings))
 
             price = 0
             for x, y in matchings.iteritems():
@@ -257,231 +257,233 @@ class Matcher(object):
         deci_removed_contigs = set([x[:-2] for x in goodourgraph.nodes() if x[:-2] not in final_graph.nodes()])
         deci_removed_contigs = list(deci_removed_contigs)
         removed_contigs = [x for x in deci_removed_contigs] + list(repeat_nodes)
-        print len(removed_contigs), "THIS MANY NOT MATCHED"   
-	print len(final_graph.nodes()), "THIS MANY IN THE FINAL GRAPH"
-        print len(final_graph.edges()), "THIS MANY EDGES IN THE FINAL GRAPH"
+        #print len(removed_contigs), "THIS MANY NOT MATCHED"   
+	#print len(final_graph.nodes()), "THIS MANY IN THE FINAL GRAPH"
+        #print len(final_graph.edges()), "THIS MANY EDGES IN THE FINAL GRAPH"
 
         # first round of construction!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        for i in range(1):
-            SLOTS = {}
-            for x, y in final_graph.edges():
-                SLOTS[(x, y)] = []
-            for contig in removed_contigs:
-                if contig  in repeat_nodes:
-                    ggoodourgraph = ourgraph2
-                else:
-                    ggoodourgraph = goodourgraph
-                ones = {}
-                for x, y in ggoodourgraph.edge[contig + "_1"].iteritems():
-                #for x, y in ourgraph2.edge[contig + "_1"].iteritems():
-                    if x[:-2] in final_graph.nodes():
-                        ones[x] = y
-                twos = {}
-                for x, y in ggoodourgraph.edge[contig + "_2"].iteritems():
-                #for x, y in ourgraph2.edge[contig + "_2"].iteritems():
-                    if x[:-2] in final_graph.nodes():
-                        twos[x] = y
-                reject = False
-                slot_array = []
-                for her in ones:
-                    slot_dict = {}
-                    strand = int(her[-1])
-                    support = ourgraph2.edge[contig + "_1"][her]["weight"]
-                    if her[:-2] not in final_graph.nodes():
-                        continue
-                    else:
-                        ori = final_graph.node[her[:-2]]["orien"]
-                    if ori == True and strand == 2:
-                        newori = True
-                        direction = "->"
-                    elif ori == True and strand == 1:
-                        newori = False
-                        direction = "<-"
-                    elif ori == False and strand == 2:
-                        newori = False
-                        direction = "<-"
-                    elif ori == False and strand == 1:
-                        newori = True
-                        direction = "->"
-    
-    
-                    if direction == "->":
-                        try:
-                            slot = (her[:-2], NEXT[her[:-2]])
-                            distance = final_graph.edge[her[:-2]][NEXT[her[:-2]]]["dist"]
-                            dist = ones[her]["dist"]
-                            aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[NEXT[her[:-2]] + "_1"]["width"] > fragsize
-                            if aa:
-                                pass
-                            else:
-                                if dist > distance:
-                                    slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]])
-                        except Exception:
-                            reject = True
-                            break
-                    elif direction == "<-":
-                        try:
-                            slot = (PREV[her[:-2]], her[:-2])
-                            distance = final_graph.edge[PREV[her[:-2]]][her[:-2]]["dist"]
-                            dist = ones[her]["dist"]
-                            aa= matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[PREV[her[:-2]] + "_1"]["width"] > fragsize
-                            if aa:
-                                pass
-                            else:
-                                if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
-                                    slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
-                            dist = max(0, distance - dist)
-                        except Exception:
-                            reject = True
-                            break
-    
-                    slot_dict["slot"] = slot
-                    slot_dict["orien"] = newori
-                    slot_dict["support"] = support
-                    slot_dict["dist"] = dist
-    
-                    este = False
-                    for i in range(len(slot_array)):
-                        x = slot_array[i]
-                        if x["slot"] == slot and x["orien"] == newori:
-                            x["support"] += support
-                            este = True
-                            slot_array[i] = x
-    
-                    if not este:
-                        slot_array.append(slot_dict)
-    
-                if reject == True:
-                    continue
-    
-                for her in twos:
-                    slot_dict = {}
-                    strand = int(her[-1])
-                    #support = goodourgraph.edge[contig + "_2"][her]["weight"]
-                    support = ourgraph2.edge[contig + "_2"][her]["weight"]
-    
-                    if her[:-2] not in final_graph.nodes():
-                        continue
-                    else:
-                        ori = final_graph.node[her[:-2]]["orien"]
-    
-                    if ori == True and strand == 2: 
-                        newori = False
-                        direction = "->"
-                    elif ori == True and strand == 1:
-                        newori = True
-                        direction = "<-"
-                    elif ori == False and strand == 2:
-                        newori = True
-                        direction = "<-"
-                    elif ori == False and strand == 1:
-                        newori = False
-                        direction = "->"
-    
-    
-                    if direction == "->":
-                        try:
-                            slot = (her[:-2], NEXT[her[:-2]])
-                            distance = final_graph.edge[her[:-2]][NEXT[her[:-2]]]["dist"]
-                            dist = twos[her]["dist"]
-                            aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[NEXT[her[:-2]] + "_1"]["width"] > fragsize
-                            if aa:
-                                pass
-                            else:
-                                if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
-                                    slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]])
-                        except Exception:
-                            break
-                    elif direction == "<-":
-                        try:
-                            slot = (PREV[her[:-2]], her[:-2])
-                            distance = final_graph.edge[PREV[her[:-2]]][her[:-2]]["dist"]
-                            dist = twos[her]["dist"]
-                            aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[PREV[her[:-2]] + "_1"]["width"] > fragsize
-                            if aa:
-                                pass
-                            else:
-                                if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
-                                    slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
-                            dist = max(0, distance - dist)
-                        except Exception:
-                            break
-    
-                    slot_dict["slot"] = slot
-                    slot_dict["orien"] = newori
-                    slot_dict["support"] = support
-                    slot_dict["dist"] = dist
-    
-    
-                    este = False
-                    for i in range(len(slot_array)):
-                        x = slot_array[i]
-                        if x["slot"] == slot and x["orien"] == newori:
-                            x["support"] += support
-                            este = True
-                            slot_array[i] = x
-    
-                    if not este:
-                        slot_array.append(slot_dict)
-    
-    
-    
-                if reject == True:
-                    continue
-    
-                sorted_slot = self.multikeysort(slot_array, ["-support"])
-                if not sorted_slot:
-                    continue
-                best_slot = sorted_slot[0]
-    
-                if len(sorted_slot) > 1:
-                    second_best_slot = sorted_slot[1]
-                    if best_slot["support"] == second_best_slot["support"]:
-                        continue
-    
-                if best_slot["support"] < 0:
-                    continue
-    
-    
-                slot = best_slot["slot"]
-                del best_slot["slot"]
-                best_slot["contig"] = contig
-                try:
-                    SLOTS[slot].append(best_slot)
-                except Exception:
-                    print slot, contig
-    
-    
-            to_be_inserted = []
-    
-            for x, y in SLOTS:
-                if len(SLOTS[(x, y)]) == 0:
-                    continue
-                elif len(SLOTS[(x, y)]) == 1:
-                    slots = self.multikeysort(SLOTS[(x, y)], ["-support"])
-                    contig = slots[0]
-                    node = contig["contig"]
-                    orien = contig["orien"]
-                    dist = contig["dist"]
-                    distance = final_graph.edge[x][y]["dist"]
-                    final_graph.add_node(node, orien=orien)
-                    final_graph.add_edge(x, node, dist=dist)
-                    final_graph.add_edge(node, y, dist=distance)
-                    final_graph.remove_edge(x, y)
-                    to_be_inserted.append(node)
-                else:
-                    slots = self.multikeysort(SLOTS[(x, y)], ["dist"])
-                    slots = self.multikeysort(SLOTS[(x, y)], ["dist"])
-                    for sl in slots:
-                        final_graph.add_node(sl["contig"], orien=sl["orien"])
-                    final_graph.add_edge(x, slots[0]["contig"], dist=100)
-                    final_graph.add_edge(slots[-1]["contig"], y, dist=100)
-                    for i in range(len(slots) - 1):
-                        final_graph.add_edge(slots[i]["contig"], slots[i + 1]["contig"], dist=100)
+        if matching_type != "backbone":
+	    for i in range(1):
+		SLOTS = {}
+		for x, y in final_graph.edges():
+		    SLOTS[(x, y)] = []
+		for contig in removed_contigs:
+		    if contig  in repeat_nodes:
+			ggoodourgraph = ourgraph2
+		    else:
+			ggoodourgraph = goodourgraph
+		    ones = {}
+		    for x, y in ggoodourgraph.edge[contig + "_1"].iteritems():
+		    #for x, y in ourgraph2.edge[contig + "_1"].iteritems():
+			if x[:-2] in final_graph.nodes():
+			    ones[x] = y
+		    twos = {}
+		    for x, y in ggoodourgraph.edge[contig + "_2"].iteritems():
+		    #for x, y in ourgraph2.edge[contig + "_2"].iteritems():
+			if x[:-2] in final_graph.nodes():
+			    twos[x] = y
+		    reject = False
+		    slot_array = []
+		    for her in ones:
+			slot_dict = {}
+			strand = int(her[-1])
+			support = ourgraph2.edge[contig + "_1"][her]["weight"]
+			if her[:-2] not in final_graph.nodes():
+			    continue
+			else:
+			    ori = final_graph.node[her[:-2]]["orien"]
+			if ori == True and strand == 2:
+			    newori = True
+			    direction = "->"
+			elif ori == True and strand == 1:
+			    newori = False
+			    direction = "<-"
+			elif ori == False and strand == 2:
+			    newori = False
+			    direction = "<-"
+			elif ori == False and strand == 1:
+			    newori = True
+			    direction = "->"
+	
+	
+			if direction == "->":
+			    try:
+				slot = (her[:-2], NEXT[her[:-2]])
+				distance = final_graph.edge[her[:-2]][NEXT[her[:-2]]]["dist"]
+				dist = ones[her]["dist"]
+				aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[NEXT[her[:-2]] + "_1"]["width"] > fragsize
+				if aa:
+				    pass
+				else:
+				    if dist > distance:
+					slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]])
+			    except Exception:
+				reject = True
+				break
+			elif direction == "<-":
+			    try:
+				slot = (PREV[her[:-2]], her[:-2])
+				distance = final_graph.edge[PREV[her[:-2]]][her[:-2]]["dist"]
+				dist = ones[her]["dist"]
+				aa= matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[PREV[her[:-2]] + "_1"]["width"] > fragsize
+				if aa:
+				    pass
+				else:
+				    if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
+					slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
+				dist = max(0, distance - dist)
+			    except Exception:
+				reject = True
+				break
+	
+			slot_dict["slot"] = slot
+			slot_dict["orien"] = newori
+			slot_dict["support"] = support
+			slot_dict["dist"] = dist
+	
+			este = False
+			for i in range(len(slot_array)):
+			    x = slot_array[i]
+			    if x["slot"] == slot and x["orien"] == newori:
+				x["support"] += support
+				este = True
+				slot_array[i] = x
+	
+			if not este:
+			    slot_array.append(slot_dict)
+	
+		    if reject == True:
+			continue
+	
+		    for her in twos:
+			slot_dict = {}
+			strand = int(her[-1])
+			#support = goodourgraph.edge[contig + "_2"][her]["weight"]
+			support = ourgraph2.edge[contig + "_2"][her]["weight"]
+	
+			if her[:-2] not in final_graph.nodes():
+			    continue
+			else:
+			    ori = final_graph.node[her[:-2]]["orien"]
+	
+			if ori == True and strand == 2: 
+			    newori = False
+			    direction = "->"
+			elif ori == True and strand == 1:
+			    newori = True
+			    direction = "<-"
+			elif ori == False and strand == 2:
+			    newori = True
+			    direction = "<-"
+			elif ori == False and strand == 1:
+			    newori = False
+			    direction = "->"
+	
+	
+			if direction == "->":
+			    try:
+				slot = (her[:-2], NEXT[her[:-2]])
+				distance = final_graph.edge[her[:-2]][NEXT[her[:-2]]]["dist"]
+				dist = twos[her]["dist"]
+				aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[NEXT[her[:-2]] + "_1"]["width"] > fragsize
+				if aa:
+				    pass
+				else:
+				    if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
+					slot = (NEXT[her[:-2]], NEXT[NEXT[her[:-2]]])
+			    except Exception:
+				break
+			elif direction == "<-":
+			    try:
+				slot = (PREV[her[:-2]], her[:-2])
+				distance = final_graph.edge[PREV[her[:-2]]][her[:-2]]["dist"]
+				dist = twos[her]["dist"]
+				aa = matching_graph.node[her[:-2] + "_1"]["width"] > fragsize and matching_graph.node[PREV[her[:-2]] + "_1"]["width"] > fragsize
+				if aa:
+				    pass
+				else:
+				    if dist > distance:#+ matching_graph.node[contig + "_1"]["width"] > distance + 900:
+					slot = (PREV[PREV[her[:-2]]], PREV[her[:-2]])
+				dist = max(0, distance - dist)
+			    except Exception:
+				break
+	
+			slot_dict["slot"] = slot
+			slot_dict["orien"] = newori
+			slot_dict["support"] = support
+			slot_dict["dist"] = dist
+	
+	
+			este = False
+			for i in range(len(slot_array)):
+			    x = slot_array[i]
+			    if x["slot"] == slot and x["orien"] == newori:
+				x["support"] += support
+				este = True
+				slot_array[i] = x
+	
+			if not este:
+			    slot_array.append(slot_dict)
+	
+	
+	
+		    if reject == True:
+			continue
+	
+		    sorted_slot = self.multikeysort(slot_array, ["-support"])
+		    if not sorted_slot:
+			continue
+		    best_slot = sorted_slot[0]
+	
+		    if len(sorted_slot) > 1:
+			second_best_slot = sorted_slot[1]
+			if best_slot["support"] == second_best_slot["support"]:
+			    continue
+	
+		    if best_slot["support"] < 0:
+			continue
+	
+	
+		    slot = best_slot["slot"]
+		    del best_slot["slot"]
+		    best_slot["contig"] = contig
+		    try:
+			SLOTS[slot].append(best_slot)
+		    except Exception:
+			#print slot, contig
+                        pass
+	
+	
+		to_be_inserted = []
+	
+		for x, y in SLOTS:
+		    if len(SLOTS[(x, y)]) == 0:
+			continue
+		    elif len(SLOTS[(x, y)]) == 1:
+			slots = self.multikeysort(SLOTS[(x, y)], ["-support"])
+			contig = slots[0]
+			node = contig["contig"]
+			orien = contig["orien"]
+			dist = contig["dist"]
+			distance = final_graph.edge[x][y]["dist"]
+			final_graph.add_node(node, orien=orien)
+			final_graph.add_edge(x, node, dist=dist)
+			final_graph.add_edge(node, y, dist=distance)
+			final_graph.remove_edge(x, y)
+			to_be_inserted.append(node)
+		    else:
+			slots = self.multikeysort(SLOTS[(x, y)], ["dist"])
+			slots = self.multikeysort(SLOTS[(x, y)], ["dist"])
+			for sl in slots:
+			    final_graph.add_node(sl["contig"], orien=sl["orien"])
+			final_graph.add_edge(x, slots[0]["contig"], dist=100)
+			final_graph.add_edge(slots[-1]["contig"], y, dist=100)
+			for i in range(len(slots) - 1):
+			    final_graph.add_edge(slots[i]["contig"], slots[i + 1]["contig"], dist=100)
  
-    	print len(final_graph.nodes()), "THIS MANY IN THE FINAL GRAPH"
-        print len(final_graph.edges()), "THIS MANY EDGES IN THE FINAL GRAPH"
+    	#print len(final_graph.nodes()), "THIS MANY IN THE FINAL GRAPH"
+        #print len(final_graph.edges()), "THIS MANY EDGES IN THE FINAL GRAPH"
 
         for node in final_graph.nodes():
             if "orien" in final_graph.node[node].keys():
@@ -496,15 +498,15 @@ class Matcher(object):
            
         wdir = self._settings.get("scaff_dir")
  
-        print len(final_graph.edges()), "EDGES"
-        print len(final_graph.nodes()), 'NODES'
+        #print len(final_graph.edges()), "EDGES"
+        #print len(final_graph.nodes()), 'NODES'
         a = set()
         for x, y in final_graph.edges():
             if x < y:
                 a.add((x, y))
             else:
                 a.add((x, y))
-        print len(a)
+        #print len(a)
 
         nx.write_gpickle(final_graph, wdir + "/final_graph.cpickle")
     
