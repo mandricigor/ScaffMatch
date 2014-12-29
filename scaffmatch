@@ -2,14 +2,15 @@
 
 WORKING_DIR=""
 CONTIG_FILE=""
-MAPPING_FILES=""
-READ_FILES=""
+MAPPING="" # By default, we assume that read files are provided (and not mapping files)
 INSERT_SIZE=""
+FIRST_FILES=""
+SECOND_FILES=""
 LIBRARY_ORIENTATION=""
 LIBRARY_STD_DEV=""
 MATCHING_TYPE=""
 BUNDLE_THRESHOLD=5
-LOG_FILE=""
+LOG_FILE=NONE
 
 
 function show_help {
@@ -17,9 +18,16 @@ function show_help {
 }
 
 
+function show_hello {
+    echo "HELLO! THIS IS SCAFFMATCH - NOVEL SCAFFOLDING TOOL DEVELOPPED BY IGOR MANDRIC AND ALEX ZELIKOVSKY AT GSU"
+    echo
+}
+
+function join { local IFS="$1"; shift; echo "$*"; }
 
 
-while getopts "h?:w:c:p:g:i:s:m:r:t:" opt; do
+
+while getopts "h?:w:c:1:2:p:g:i:s:mt:" opt; do
     case "$opt" in
     h|\?)
         show_help
@@ -31,15 +39,17 @@ while getopts "h?:w:c:p:g:i:s:m:r:t:" opt; do
         ;;
     p)  LIBRARY_ORIENTATION=$OPTARG
         ;;
+    1)  FIRST_FILES=$OPTARG
+        ;;
+    2)  SECOND_FILES=$OPTARG
+        ;;
     g)  MATCHING_TYPE=$OPTARG
         ;;
     i)  INSERT_SIZE=$OPTARG
         ;;
     s)  LIBRARY_STD_DEV=$OPTARG
         ;;
-    m)  MAPPING_FILES=$OPTARG
-        ;;
-    r)  READ_FILES=$OPTARG
+    m)  MAPPING=true
         ;;
     t)  BUNDLE_THRESHOLD=$OPTARG
         ;;
@@ -47,42 +57,136 @@ while getopts "h?:w:c:p:g:i:s:m:r:t:" opt; do
 done
 
 
-# PROVIDE EITHER READ FILES EITHER MAPPING FILES
+show_hello
 
-if [ \( -z "$MAPPING_FILES" \) -a \( -z "$READ_FILES" \) ]; then
-    echo "Please, provide either 2 read files, either 2 mapping (SAM) files: you provided none"
-    exit
-fi
+# VALIDATE ARGUMENTS: CHECK FOR THE MANDATORY ONES IF THEY EXIST
 
-if [ \( ! -z "$MAPPING_FILES" \) -a \( ! -z "$READ_FILES" \) ]; then
-    echo "Please, provide either 2 read files, either 2 mapping (SAM) files: you provided both"
-    exit
-fi
-
-
-
-# VALIDATE ARGUMENTS: CHECK FOR THE MANDATORY ONES
-
-if [ \( -z "$WORKING_DIR" \) -o \( -z "$CONTIG_FILE" \) -o \( -z "$INSERT_SIZE" \) -o \( -z "$LIBRARY_ORIENTATION" \) -o \( -z "$LIBRARY_STD_DEV" \) ]; then
-    echo "You missed some mandatory arguments. Please, indicate the following:"
+if [ \( -z "$WORKING_DIR" \) -o \( -z "$CONTIG_FILE" \) -o \( -z "$FIRST_FILES" \) -o \( -z "$SECOND_FILES" \) -o \( -z "$INSERT_SIZE" \) -o \( -z "$LIBRARY_ORIENTATION" \) -o \( -z "$LIBRARY_STD_DEV" \) ]; then
+    echo "Error: You missed some mandatory arguments. Please, indicate the following:"
     if [ -z "$WORKING_DIR" ]; then
-        echo "    -w) working directory;"
+        echo "    -w) scaffolding (working) directory;"
     fi
     if [ -z "$CONTIG_FILE" ]; then
-        echo "    -c) contigs file;"
+        echo "    -c) contig fasta file;"
+    fi
+    if [ -z "$FIRST_FILES" ]; then
+        echo "    -1) (comma separated list of) file(s) corresponding to the first read of the read pair;"
+    fi
+    if [ -z "$SECOND_FILES" ]; then
+        echo "    -2) (comma separated list of) file(s) corresponding to the second read of the read pair;"
     fi
     if [ -z "$INSERT_SIZE" ]; then
-        echo "    -i) insert size;"
+        echo "    -i) (comma separated list of) insert size(s);"
     fi
     if [ -z "$LIBRARY_ORIENTATION" ]; then
-        echo "    -p) library orientation;"
+        echo "    -p) (comma separated list of) library orientation(s);"
     fi
     if [ -z "$LIBRARY_STD_DEV" ]; then
-        echo "    -s) library standard deviation;"
+        echo "    -s) (comma separated list of) library standard deviation(s);"
     fi
     exit
 fi
 
+
+# VALIDATION OF THE ARGUMENTS:
+
+# WORKING_DIR:
+
+mkdir -p $WORKING_DIR
+
+# CONTIG_FILE:
+
+if [ ! -f "$CONTIG_FILE" ]; then
+    echo "Error: Contig fasta file does not exist!"
+    exit
+fi
+
+# FIRST_FILES:
+
+count1=0
+IFS=',' read -ra MAPF <<< "$FIRST_FILES"
+for i in "${MAPF[@]}"; do
+    if [ ! -f "$i" ]; then
+        echo "Error: File $i does not exist!"
+        exit
+    fi
+    count1=$(( count1 + 1 ))
+done
+
+
+# SECOND_FILES:
+
+count2=0
+IFS=',' read -ra MAPF <<< "$SECOND_FILES"
+for i in "${MAPF[@]}"; do
+    if [ ! -f "$i" ]; then
+        echo "Error: File $i does not exist!"
+        exit
+    fi
+    count2=$(( count2 + 1 ))
+done
+
+
+# INSERT_SIZE:
+
+count3=0
+IFS=',' read -ra MAPF <<< "$INSERT_SIZE"
+for i in "${MAPF[@]}"; do
+    re='^[0-9]+$'
+    if ! [[ "$i" =~ $re ]] ; then
+       echo "Error: $i is not a number"
+       exit
+    fi
+    count3=$(( count3 + 1 ))
+done
+
+
+# LIBRARY_ORIENTATION:
+
+count4=0
+IFS=',' read -ra MAPF <<< "$LIBRARY_ORIENTATION"
+for i in "${MAPF[@]}"; do
+    re='^[0-9]+$'
+    if ! [[ "$i" =~ $re ]] ; then
+       echo "Error: $i is not a number"
+       exit
+    fi
+    count4=$(( count4 + 1 ))
+done
+
+
+
+# LIBRARY_STD_DEV:
+
+count5=0
+IFS=',' read -ra MAPF <<< "$LIBRARY_STD_DEV"
+for i in "${MAPF[@]}"; do
+    re='^[0-9]+$'
+    if ! [[ "$i" =~ $re ]] ; then
+       echo "Error: $i is not a number"
+       exit
+    fi
+    count5=$(( count5 + 1 ))
+done
+
+
+# TEST IF ALL COUNTS ARE EQUAL: OTHERWISE WE HAVE INCONSISTENT PARAMETERS
+
+st=0
+for i in $count2 $count3 $count4 $count5; do
+    [ "$count1" = "$i" ]
+    st=$(( $? + st ))
+done
+
+if [ $st -eq 0 ]; then
+    :
+else 
+    echo "Error: You have errors when providing parameters (the number of files (insert sizes, standard deviations) are not consistent)"
+fi
+
+
+
+# MATCHING_TYPE
 
 if [ -z "$MATCHING_TYPE" ]; then
     MATCHING_TYPE="max_weight"
@@ -90,44 +194,42 @@ fi
 
 
 
-if [ ! -z "$MAPPING_FILES" ]; then
+if [ ! -z "$MAPPING" ]; then
     # we have just mapping files: go ahead, run ScaffMatch
-    declare -a MAPPINGS
-    count=0
-    IFS=',' read -ra MAPF <<< "$MAPPING_FILES"
-    for i in "${MAPF[@]}"; do
-        MAPPINGS[$count]="$i"
-        count=$(( count + 1 ))
-    done 
     echo "Running ScaffMatch"
-    ./scaffmatch.py -w $WORKING_DIR -c $CONTIG_FILE -m1 ${MAPPINGS[0]} -m2 ${MAPPINGS[1]} -i $INSERT_SIZE -p $LIBRARY_ORIENTATION -s $LIBRARY_STD_DEV -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
+    python2.7 scaffmatch.py -w $WORKING_DIR -c $CONTIG_FILE -m1 $FIRST_FILES -m2 $SECOND_FILES -i $INSERT_SIZE -p $LIBRARY_ORIENTATION -s $LIBRARY_STD_DEV -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
 fi
 
 
 
-mkdir -p $WORKING_DIR
 
-if [ ! -z "$READ_FILES" ]; then
+if [ -z "$MAPPING" ]; then
     # we have just mapping files: go ahead, run ScaffMatch
-    declare -a READINGS
-    count=0
-    IFS=',' read -ra READF <<< "$READ_FILES"
-    for i in "${READF[@]}"; do
-        READINGS[$count]="$i"
-        count=$(( count + 1 ))
-    done
     NR_CPU=`cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1`
     INDEX_FILE=${WORKING_DIR%%/}/bowtie2_index
-    TMP1_FILE=${WORKING_DIR%%/}/tmp1.sam
-    TMP2_FILE=${WORKING_DIR%%/}/tmp2.sam
+    #TMP1_FILE=${WORKING_DIR%%/}/tmp1.sam
+    #TMP2_FILE=${WORKING_DIR%%/}/tmp2.sam
     echo "Building the index"
     bowtie2-build -f $CONTIG_FILE $INDEX_FILE
-    echo "Mapping the first file"
-    bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $READINGS[0] -S $TMP1_SAM
-    echo "Mapping the second file"
-    bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $READINGS[1] -S $TMP2_SAM
+    echo "Mapping the first file(s)"
+    declare -a FIRST_SAM
+    IFS=',' read -ra MAPF <<< "$FIRST_FILES"
+    for i in "${MAPF[@]}"; do
+        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U "$i" -S $i.sam
+        $FIRST_SAM+=$i.sam 
+    done
+    join , "${FIRST_SAM[@]}" 
+    echo $FIRST_SAM
+    echo "Mapping the second file(s)"
+    declare -a SECOND_SAM
+    IFS=',' read -ra MAPF <<< "$SECOND_FILES"
+    for i in "${MAPF[@]}"; do
+        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U "$i" -S $i.sam
+        $SECOND_SAM+=$i.sam
+    done
+    join , "${SECOND_SAM[@]}" 
     echo "Running ScaffMatch"
-    ./scaffmatch.py -w $WORKING_DIR -c $CONTIG_FILE -m1 $TMP1_SAM -m2 $TMP2_SAM -i $INSERT_SIZE -p $LIBRARY_ORIENTATION -s $LIBRARY_STD_DEV -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
+    python2.7 scaffmatch.py -w $WORKING_DIR -c $CONTIG_FILE -m1 $FIRST_SAM -m2 $SECOND_SAM -i $INSERT_SIZE -p $LIBRARY_ORIENTATION -s $LIBRARY_STD_DEV -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
 fi
 
 

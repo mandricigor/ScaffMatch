@@ -48,19 +48,17 @@ class GraphConstructor(object):
         corresponding to valid read pairs to graph construction"""
         self._contigs_coverage()
         libraries = self._settings.get("libraries")
-        mapped = self._settings.get("mapped_file")
-        unmapped = self._settings.get("unmapped_file")
+        mapped_ = self._settings.get("mapped_file")
+        unmapped_ = self._settings.get("unmapped_file")
         wdir = self._settings.get("scaff_dir") 
 
    
         curlen1 = curlen2 = 0
   
-	key_size = self._settings.get("key_size")
- 
-        for lib_id in libraries.keys()[0:1]: # stub for multiple libraries
+        for lib_id in libraries.keys(): # stub for multiple libraries
             lib = libraries[lib_id]
             sam1, sam2 = lib["sam1"], lib["sam2"]
-            with open(os.path.join(wdir, mapped), 'w') as mapped, open(os.path.join(wdir, unmapped), 'w') as unmapped, \
+            with open(os.path.join(wdir, mapped_), 'w') as mapped, open(os.path.join(wdir, unmapped_), 'w') as unmapped, \
                     open(sam1) as xx, open(sam2) as yy, open(os.path.join(wdir, "multiple.txt"), "w") as mtp, open(os.path.join(wdir, "same.txt"), "w") as same:
                 fileiter1 = self._read_in_chunks(xx)
                 fileiter2 = self._read_in_chunks(yy)
@@ -221,7 +219,7 @@ class GraphConstructor(object):
         """
         # insert size and standard deviation
         library = self._settings.get("libraries").get(lib_id)
-        ins_size, std_dev = library["ins"], library["std"]
+        ins_size, std_dev, pair_mode = library["ins"], library["std"], library["pm"]
  
         # first leg of the read
         oflag1, rname1, lpos1 = line1[1], line1[2], int(line1[3])
@@ -244,7 +242,7 @@ class GraphConstructor(object):
         rpos2 = lpos2 + len(line2[9])
 
 
-        op, oq = self._get_orientation(oflag1, oflag2, int(self._settings.get("pair_mode")))
+        op, oq = self._get_orientation(oflag1, oflag2, int(pair_mode))
         orients = (op, oq)
                
 
@@ -390,42 +388,20 @@ class GraphConstructor(object):
             nodedict[node1] = ar1
             nodedict[node2] = ar2
                  
-	#print nodedict
-        import collections
-        """with open("statistics.txt", "w") as f, open("distribution.txt", "w") as f1:
-            for node in nodedict:
-	        f.write("%s:\n" % node)
-                posdict = nodedict[node]
-                od = collections.OrderedDict(sorted(posdict.items()))
-                for k, v in od.iteritems():
-                    f.write("%s: %s\n" % (k, ",".join(v)))
-                    #f.write("%s: %s\n" % (k, len(v)))
-                f.write("-----------------------------------------------------\n")
-
-                # but now try to see how they are arranged on the contig:
-                positions = {}
-                for k, v in od.iteritems():
-                    for vv in v:
-                        pos = positions.get(vv, [])
-                        pos.append(k)
-                        positions[vv] = pos
-
-                f1.write("%s:\n" % node)
-                for key, arr in positions.iteritems():
-                    f1.write("\t%s: " % key)
-                    f1.write("%s\n" % len(arr))
-                f1.write("-----------------------------------------------------------------------\n")"""
-                    
-
 
         for node1, node2 in self._dist:
 
             links = self._dist[(node1, node2)]
-
             # ------------------------
             linkdists = {}
             for link in links:
                 linkdists[link] = link.dist
+
+            distslinks = {} # identify the link by dist
+            for link in links:
+                distslinks[link.dist] = link
+
+
             sorted_x = sorted(linkdists.items(), key=operator.itemgetter(1))
 
         
@@ -437,13 +413,14 @@ class GraphConstructor(object):
             newstd = 0
             size = 0
             
-            std_dev = int(self._settings.get("std_dev"))
+            #std_dev = int(self._settings.get("std_dev"))
 
-            lowerbound = sorted_x[median][1] - 3 * std_dev
-            upperbound = sorted_x[median][1] + 3 * std_dev
+            lowerbound = sorted_x[median][1] - 3 * distslinks[sorted_x[median][1]].std  #std_dev
+            upperbound = sorted_x[median][1] + 3 * distslinks[sorted_x[median][1]].std
             
             iterator = 0
             while iterator < len(linkdists) and sorted_x[iterator][1] < upperbound:
+                std_dev = distslinks[sorted_x[iterator][1]].std
                 if lowerbound < sorted_x[iterator][1] < upperbound:
                     size += 1
                     p += sorted_x[iterator][1] * 1.0 / pow(std_dev, 2)
