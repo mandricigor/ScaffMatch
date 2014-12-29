@@ -14,7 +14,32 @@ LOG_FILE=NONE
 
 
 function show_help {
-    echo "HERE A DETAILED HELP MUST BE PROVIDED"
+    echo "
+ScaffMatch is a novel scaffolding tool based on Maximum-Weight Matching able to produce high-quality scaffolds from NGS data (reads and contigs). The tool is written in Python 2.7. It also includes a bash script wrapper that calls aligner in case one needs to first map reads to contigs (instead of providing .sam files).
+
+The arguments accepted by ScaffMatch are:
+
+  -w) Working directory -- this is the directory where ScaffMatch files are stored. These are .sam files produced after mapping reads to contigs and the resulting scaffolds file scaffolds.fa fasta file;
+
+  -c) Contig fasta file;
+
+  -m) Command line argument with no options. It is used when .sam files are used instead of reads .fastq files. Do not use this option if you provide reads files;
+
+  -1) (Comma separated list of) either .fastq or .sam file(s) corresponding to the first read of the read pair;
+
+  -2) (Comma separated list of) either .fastq or .sam file(s) corresponding to the second read of the read pair;
+
+  -i) (Comma separated list of) insert size(s) of the library(-ies);
+
+  -s) (Comma separated list of) library(-ies) standard deviation(s) of insert size(s);
+
+  -t) Bundle threshold. Pairs of contigs supported by number of read pairs less than the value of this argument are discarded. Optional
+argument, by default it is equal to 5;
+
+  -g) Matching heuristics: use max_weight for Maximum Weight Matching heuristics with the Insertion step, use backbone for Maximum Weight Matching heuristics without the Insertion step, use greedy for Greedy Matching heuristics;
+
+  -l) Log file - where to store the logs. Optional argument. By default, stdout is used.
+"
 }
 
 
@@ -84,6 +109,7 @@ if [ \( -z "$WORKING_DIR" \) -o \( -z "$CONTIG_FILE" \) -o \( -z "$FIRST_FILES" 
     if [ -z "$LIBRARY_STD_DEV" ]; then
         echo "    -s) (comma separated list of) library standard deviation(s);"
     fi
+    echo "Run command 'scaffmatch -h' for detailed help."
     exit
 fi
 
@@ -98,6 +124,7 @@ mkdir -p $WORKING_DIR
 
 if [ ! -f "$CONTIG_FILE" ]; then
     echo "Error: Contig fasta file does not exist!"
+    echo "Run command 'scaffmatch -h' for detailed help."
     exit
 fi
 
@@ -108,6 +135,7 @@ IFS=',' read -ra MAPF <<< "$FIRST_FILES"
 for i in "${MAPF[@]}"; do
     if [ ! -f "$i" ]; then
         echo "Error: File $i does not exist!"
+        echo "Run command 'scaffmatch -h' for detailed help."
         exit
     fi
     count1=$(( count1 + 1 ))
@@ -121,6 +149,7 @@ IFS=',' read -ra MAPF <<< "$SECOND_FILES"
 for i in "${MAPF[@]}"; do
     if [ ! -f "$i" ]; then
         echo "Error: File $i does not exist!"
+        echo "Run command 'scaffmatch -h' for detailed help."
         exit
     fi
     count2=$(( count2 + 1 ))
@@ -135,6 +164,7 @@ for i in "${MAPF[@]}"; do
     re='^[0-9]+$'
     if ! [[ "$i" =~ $re ]] ; then
        echo "Error: $i is not a number"
+       echo "Run command 'scaffmatch -h' for detailed help."
        exit
     fi
     count3=$(( count3 + 1 ))
@@ -149,6 +179,7 @@ for i in "${MAPF[@]}"; do
     re='^[0-9]+$'
     if ! [[ "$i" =~ $re ]] ; then
        echo "Error: $i is not a number"
+       echo "Run command 'scaffmatch -h' for detailed help."
        exit
     fi
     count4=$(( count4 + 1 ))
@@ -164,6 +195,7 @@ for i in "${MAPF[@]}"; do
     re='^[0-9]+$'
     if ! [[ "$i" =~ $re ]] ; then
        echo "Error: $i is not a number"
+       echo "Run command 'scaffmatch -h' for detailed help."
        exit
     fi
     count5=$(( count5 + 1 ))
@@ -182,6 +214,8 @@ if [ $st -eq 0 ]; then
     :
 else 
     echo "Error: You have errors when providing parameters (the number of files (insert sizes, standard deviations) are not consistent)"
+    echo "Run command 'scaffmatch -h' for detailed help."
+    exit
 fi
 
 
