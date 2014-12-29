@@ -52,7 +52,7 @@ function join { local IFS="$1"; shift; echo "$*"; }
 
 
 
-while getopts "h?:w:c:1:2:p:g:i:s:mt:" opt; do
+while getopts "h?:w:c:1:2:p:g:i:s:mt:l:" opt; do
     case "$opt" in
     h|\?)
         show_help
@@ -77,6 +77,8 @@ while getopts "h?:w:c:1:2:p:g:i:s:mt:" opt; do
     m)  MAPPING=true
         ;;
     t)  BUNDLE_THRESHOLD=$OPTARG
+        ;;
+    l)  LOG_FILE=$OPTARG
         ;;
     esac
 done
