@@ -229,7 +229,6 @@ if [ -z "$MATCHING_TYPE" ]; then
 fi
 
 
-
 if [ ! -z "$MAPPING" ]; then
     # we have just mapping files: go ahead, run ScaffMatch
     echo "Running ScaffMatch"
@@ -238,34 +237,55 @@ fi
 
 
 
-
 if [ -z "$MAPPING" ]; then
-    # we have just mapping files: go ahead, run ScaffMatch
     NR_CPU=`cat /proc/cpuinfo | awk '/^processor/{print $3}' | tail -1`
     INDEX_FILE=${WORKING_DIR%%/}/bowtie2_index
-    #TMP1_FILE=${WORKING_DIR%%/}/tmp1.sam
-    #TMP2_FILE=${WORKING_DIR%%/}/tmp2.sam
-    echo "Building the index"
-    bowtie2-build -f $CONTIG_FILE $INDEX_FILE
-    echo "Mapping the first file(s)"
-    declare -a FIRST_SAM
     IFS=',' read -ra MAPF <<< "$FIRST_FILES"
-    for i in "${MAPF[@]}"; do
-        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U "$i" -S $i.sam
-        $FIRST_SAM+=$i.sam 
-    done
-    join , "${FIRST_SAM[@]}" 
-    echo $FIRST_SAM
-    echo "Mapping the second file(s)"
-    declare -a SECOND_SAM
-    IFS=',' read -ra MAPF <<< "$SECOND_FILES"
-    for i in "${MAPF[@]}"; do
-        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U "$i" -S $i.sam
-        $SECOND_SAM+=$i.sam
-    done
-    join , "${SECOND_SAM[@]}" 
-    echo "Running ScaffMatch"
-    python2.7 scaffmatch.py -w $WORKING_DIR -c $CONTIG_FILE -m1 $FIRST_SAM -m2 $SECOND_SAM -i $INSERT_SIZE -p $LIBRARY_ORIENTATION -s $LIBRARY_STD_DEV -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
+    LENGTH=${#MAPF[@]}
+    if [ $LENGTH -lt 2 ]; then
+        # we have one single library
+        TMP1_FILE=${WORKING_DIR%%/}/tmp1.sam
+        TMP2_FILE=${WORKING_DIR%%/}/tmp2.sam
+        echo "Building the index"
+        bowtie2-build -f $CONTIG_FILE $INDEX_FILE
+        echo "Mapping the first read file"
+        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $FIRST_FILES -S $TMP1_FILE
+        echo "Mapping the second read file"
+        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $SECOND_FILES -S $TMP2_FILE
+        echo "Running ScaffMatch"
+        python2.7 scaffmatch.py -w $WORKING_DIR -c $CONTIG_FILE -m1 $TMP1_FILE -m2 $TMP2_FILE -i $INSERT_SIZE -p $LIBRARY_ORIENTATION -s $LIBRARY_STD_DEV -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
+    else
+        # this is the case of multiple libraries
+        IFS=',' read -ra MAPF <<< "$FIRST_FILES"
+        IFS=',' read -ra MAPS <<< "$SECOND_FILES"
+        IFS=',' read -ra INSS <<< "$INSERT_SIZE"
+        IFS=',' read -ra LIBO <<< "$LIBRARY_ORIENTATION"
+        IFS=',' read -ra STDD <<< "$LIBRARY_STD_DEV"
+        for i in $(seq 1 $LENGTH);
+        do
+            TMP1_FILE=${WORKING_DIR%%/}/tmp1.sam
+            TMP2_FILE=${WORKING_DIR%%/}/tmp2.sam
+            if [[ "$i" -eq 1 ]]; then
+                echo "Building the index"
+                bowtie2-build -f $CONTIG_FILE $INDEX_FILE
+                echo "Mapping the first read file"
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPF[0]} -S $TMP1_FILE
+                echo "Mapping the second read file"
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPS[0]} -S $TMP2_FILE
+                echo "Running ScaffMatch"
+                python2.7 scaffmatch.py -w $WORKING_DIR -c $CONTIG_FILE -m1 $TMP1_FILE -m2 $TMP2_FILE -i ${INSS[0]} -p ${LIBO[0]} -s ${STDD[0]} -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
+            else
+                echo "Building the index"
+                NEW_CONTIG_FILE=${WORKING_DIR%%/}/scaffolds.fa
+                bowtie2-build -f $NEW_CONTIG_FILE $INDEX_FILE
+                echo "Mapping the first read file"
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPF[$(( $i - 1 ))]} -S $TMP1_FILE
+                echo "Mapping the second read file"
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPS[$(( $i - 1 ))]} -S $TMP2_FILE
+                echo "Running ScaffMatch"
+                python2.7 scaffmatch.py -w $WORKING_DIR -c $NEW_CONTIG_FILE -m1 $TMP1_FILE -m2 $TMP2_FILE -i ${INSS[$(( $i - 1 ))]} -p ${LIBO[$(( $i - 1 ))]} -s ${STDD[$(( $i - 1 ))]} -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
+            fi
+        done
+    fi
 fi
-
 
