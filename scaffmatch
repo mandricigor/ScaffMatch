@@ -183,9 +183,8 @@ done
 count4=0
 IFS=',' read -ra MAPF <<< "$LIBRARY_ORIENTATION"
 for i in "${MAPF[@]}"; do
-    re='^[0-9]+$'
-    if ! [[ "$i" =~ $re ]] ; then
-       echo "Error: $i is not a number"
+    if [ "$i" != "fr" ] && [ "$i" != "rf" ] ; then
+       echo "Error: $i is not a correct orientation"
        echo "Run command 'scaffmatch -h' for detailed help."
        exit
     fi

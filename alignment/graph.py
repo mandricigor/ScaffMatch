@@ -242,7 +242,7 @@ class GraphConstructor(object):
         rpos2 = lpos2 + len(line2[9])
 
 
-        op, oq = self._get_orientation(oflag1, oflag2, int(pair_mode))
+        op, oq = self._get_orientation(oflag1, oflag2, pair_mode)
         orients = (op, oq)
                
 
