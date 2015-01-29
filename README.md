@@ -11,7 +11,7 @@ ScaffMatch is a novel scaffolding tool based on Maximum-Weight Matching able to 
 
 The arguments accepted by ScaffMatch are:
 
-  -w) Working directory -- this is the directory where ScaffMatch files are stored. These are .sam files produced after mapping reads to contigs and the resulting scaffolds file `scaffolds.fa` fasta file;
+  -w) Working directory - this is the directory where ScaffMatch files are stored. These are .sam files produced after mapping reads to contigs and the resulting scaffolds file `scaffolds.fa` fasta file;
 
   -c) Contig fasta file;
 
@@ -24,6 +24,8 @@ The arguments accepted by ScaffMatch are:
   -i) (Comma separated list of) insert size(s) of the library(-ies);
 
   -s) (Comma separated list of) library(-ies) standard deviation(s) of insert size(s);
+
+  -p) (Comma separated list of) library(-ies) orientation (`fr` - innie, `rf` - outtie);
 
   -t) Bundle threshold. Pairs of contigs supported by number of read pairs less than the value of this argument are discarded. Optional argument, by default it is equal to 5;
 
