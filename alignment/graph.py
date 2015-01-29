@@ -7,6 +7,13 @@ from math import sqrt, log
 import numpy
 import operator
 import os.path
+from multiprocessing import Pool, cpu_count
+
+
+def process_line(line):
+    return line
+
+
 
 class Link(object):
     def __init__(self, **args):
@@ -15,7 +22,7 @@ class Link(object):
 
     def __str__(self):
         return "distance: %s" % self.dist
-    
+
 
 class GraphConstructor(object):
     
@@ -31,16 +38,12 @@ class GraphConstructor(object):
     def set_settings(self, settings):
         self._settings = settings
         
-        
+ 
     def _read_in_chunks(self, file_object, chunk_size=10000000000):
-        """Lazy function (generator) to read a file piece by piece.
-        Default chunk size: 1k."""
-        while True:
-            data = file_object.read(chunk_size)
-            if not data:
-                break
-            yield data
-        
+        nr_proc = cpu_count()
+        pool = Pool(nr_proc)
+        results = pool.map(process_line, file_object, nr_proc)
+        return iter(results)
 
     
     def scaffolding_graph(self):

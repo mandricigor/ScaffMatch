@@ -268,10 +268,10 @@ if [ -z "$MAPPING" ]; then
         TMP2_FILE=${WORKING_DIR%%/}/tmp2.sam
         echo "Building the index"
         bowtie2-build -q -f $CONTIG_FILE $INDEX_FILE
-        echo "Mapping the first read file"
-        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $FIRST_FILES -S $TMP1_FILE
-        echo "Mapping the second read file"
-        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $SECOND_FILES -S $TMP2_FILE
+        echo "Mapping the read files"
+        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $FIRST_FILES -S $TMP1_FILE &
+        bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U $SECOND_FILES -S $TMP2_FILE &
+        wait
         echo "Running ScaffMatch"
         python2.7 $SCAFFMATCH_DIR$SCAFFMATCH_SCRIPT -w $WORKING_DIR -c $CONTIG_FILE -m1 $TMP1_FILE -m2 $TMP2_FILE -i $INSERT_SIZE -p $LIBRARY_ORIENTATION -s $LIBRARY_STD_DEV -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
     else
@@ -288,20 +288,20 @@ if [ -z "$MAPPING" ]; then
             if [[ "$i" -eq 1 ]]; then
                 echo "Building the index"
                 bowtie2-build -q -f $CONTIG_FILE $INDEX_FILE
-                echo "Mapping the first read file"
-                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPF[0]} -S $TMP1_FILE
-                echo "Mapping the second read file"
-                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPS[0]} -S $TMP2_FILE
+                echo "Mapping the read files"
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPF[0]} -S $TMP1_FILE &
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPS[0]} -S $TMP2_FILE &
+                wait
                 echo "Running ScaffMatch"
                 python2.7 $SCAFFMATCH_DIR$SCAFFMATCH_SCRIPT -w $WORKING_DIR -c $CONTIG_FILE -m1 $TMP1_FILE -m2 $TMP2_FILE -i ${INSS[0]} -p ${LIBO[0]} -s ${STDD[0]} -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
             else
                 echo "Building the index"
                 NEW_CONTIG_FILE=${WORKING_DIR%%/}/scaffolds.fa
                 bowtie2-build -q -f $NEW_CONTIG_FILE $INDEX_FILE
-                echo "Mapping the first read file"
-                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPF[$(( $i - 1 ))]} -S $TMP1_FILE
-                echo "Mapping the second read file"
-                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPS[$(( $i - 1 ))]} -S $TMP2_FILE
+                echo "Mapping the read files"
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPF[$(( $i - 1 ))]} -S $TMP1_FILE &
+                bowtie2 --quiet --no-hd --reorder -k 10 -q -p $NR_CPU -x $INDEX_FILE -U ${MAPS[$(( $i - 1 ))]} -S $TMP2_FILE &
+                wait
                 echo "Running ScaffMatch"
                 python2.7 $SCAFFMATCH_DIR$SCAFFMATCH_SCRIPT -w $WORKING_DIR -c $NEW_CONTIG_FILE -m1 $TMP1_FILE -m2 $TMP2_FILE -i ${INSS[$(( $i - 1 ))]} -p ${LIBO[$(( $i - 1 ))]} -s ${STDD[$(( $i - 1 ))]} -g $MATCHING_TYPE -t $BUNDLE_THRESHOLD -l $LOG_FILE
             fi
