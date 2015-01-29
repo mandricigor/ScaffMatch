@@ -1,0 +1,37 @@
+
+ScaffMatch 0.9 INSTALLATION README
+
+1. SYSTEM REQUIREMENTS
+
+ScaffMatch is designed to be run on GNU/Linux.
+
+2. SOFTWARE REQUIREMENTS
+
+    * Python 2.7.x
+    * Bash >= 4
+    * Networkx >= 1.7
+    * Numpy >= 1.6.2
+    * Bowtie2
+
+Python2.7 can be downloaded from:
+     https://www.python.org/.
+Bash is supposed to be installed on GNU/Linux systems. In case you have an older version, you should update it.
+Networkx python library can be installed using the command:
+    # pip install networkx
+The instructions for installing Numpy python library can be found here:
+    http://www.numpy.org/
+Bowtie2 can be downloaded from:
+    http://sourceforge.net/projects/bowtie-bio/files/bowtie2/
+
+3. INSTALLATION
+
+To download the ScaffMatch source code (the latest version), type (Git is supposed to be installed on your system):
+    # git clone https://github.com/mandricigor/scaffmatch.git
+    # cd scaffmatch
+
+To run the installation script, run the following command:
+    # sh install.sh
+
+ScaffMatch will be installed in your /usr/bin directory.
+
+

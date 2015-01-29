@@ -1,6 +1,6 @@
 ScaffMatch README page -- Georgia State University -- December 2014
 
-ScaffMatch v1.0 Igor Mandric - Alex Zelikovsky
+ScaffMatch v0.9 Igor Mandric - Alex Zelikovsky
 
 email: mandric.igor@gmail.com
 
