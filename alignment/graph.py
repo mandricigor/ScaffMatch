@@ -1,4 +1,5 @@
 
+import sys
 from random import random
 from collections import deque, Counter
 import networkx as nx
@@ -190,8 +191,13 @@ class GraphConstructor(object):
             counter += 1
             covs.append(self._IGORgraph.node[x + "_1"]["cov"])
 
-        meancov *= 1.0
-        meancov /= counter
+        try:
+            meancov *= 1.0
+            meancov /= counter
+        except ZeroDivisionError:
+            logger = self._settings.get("logger")
+            logger.error("Scaffolding graph has no edges!")
+            sys.exit() 
 
         dispcov = sqrt(sum([(x - meancov) * (x - meancov) for x in covs]) / counter)
 
