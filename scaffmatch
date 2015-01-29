@@ -32,6 +32,8 @@ The arguments accepted by ScaffMatch are:
 
   -s) (Comma separated list of) library(-ies) standard deviation(s) of insert size(s);
 
+  -p) (Comma separated list of) library(-ies) orientation (fr - innie, rf - outtie);
+
   -t) Bundle threshold. Pairs of contigs supported by number of read pairs less than the value of this argument are discarded. Optional
 argument, by default it is equal to 5;
 
