@@ -111,8 +111,6 @@ class Matcher(object):
 
         for i in range(1):
             matchings = matching_function(ourgraph) # MAX WEIGHT MATCHING IS BETTER, GUYS!
-            logger.info("%s THIS NUMBER OF NODES" % len(matchings))
-
             price = 0
             for x, y in matchings.iteritems():
                 if x < y:

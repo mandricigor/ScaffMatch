@@ -68,7 +68,7 @@ def parse_args():
     main_p.add_argument('-m1', dest='mappings1', required=True, help='comma separated list of .sam files (first read in the read pair)')
     main_p.add_argument('-m2', dest='mappings2', required=True, help='comma separated list of .sam files (second read in the read pair)')  
     main_p.add_argument('-i', dest='ins_size', required=True, help='insert sizes (comma separated values)')
-    main_p.add_argument('-p', dest='pair_mode', required=True, help='pair modes (0 - SOLiD style -> ->, 1 - innie style -> <-, 2 - outtie style <- ->) (comma separated values)')
+    main_p.add_argument('-p', dest='pair_mode', required=True, help='pair modes (fr - innie style -> <-, rf - outtie style <- ->) (comma separated values)')
     main_p.add_argument('-s', dest='std_dev', required=True, help='libraries standard deviations (comma separated values)')
     main_p.add_argument('-t', dest='bundle_threshold', required=False, default=5, help='bundle threshold: links between contigs with # of reads < bundle_threshold are discarded')
     main_p.add_argument('-g', dest='matching', required=False, default="max_weight", help='matching heuristic: max_weight - Maximum Weight Matching heuristics, greedy - Greedy heuristics, backbone - Maximum Weight Matching heuristics without Insertion step')

@@ -309,9 +309,9 @@ class GraphConstructor(object):
             o2 = 0
         else:
             o2 = 1
-        if pair_mode == 1:
+        if pair_mode == "fr":
             o2 = 1 - o2
-        if pair_mode == 2:
+        if pair_mode == "rf":
             o1 = 1 - o1
         return o1, o2
 
