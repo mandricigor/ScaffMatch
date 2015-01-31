@@ -1,5 +1,6 @@
 
 import sys
+import mmap
 from random import random
 from collections import deque, Counter
 import networkx as nx
@@ -11,8 +12,6 @@ import os.path
 from multiprocessing import Pool, cpu_count
 
 
-def process_line(line):
-    return line
 
 
 
@@ -38,13 +37,6 @@ class GraphConstructor(object):
         
     def set_settings(self, settings):
         self._settings = settings
-        
- 
-    def _read_in_chunks(self, file_object, chunk_size=10000000000):
-        nr_proc = cpu_count()
-        pool = Pool(nr_proc)
-        results = pool.map(process_line, file_object, nr_proc)
-        return iter(results)
 
     
     def scaffolding_graph(self):
@@ -56,124 +48,110 @@ class GraphConstructor(object):
         unmapped_ = self._settings.get("unmapped_file")
         wdir = self._settings.get("scaff_dir") 
 
-   
-        curlen1 = curlen2 = 0
-  
         for lib_id in libraries.keys(): # stub for multiple libraries
             lib = libraries[lib_id]
             sam1, sam2 = lib["sam1"], lib["sam2"]
             with open(os.path.join(wdir, mapped_), 'w') as mapped, open(os.path.join(wdir, unmapped_), 'w') as unmapped, \
                     open(sam1) as xx, open(sam2) as yy, open(os.path.join(wdir, "multiple.txt"), "w") as mtp, open(os.path.join(wdir, "same.txt"), "w") as same:
-                fileiter1 = self._read_in_chunks(xx)
-                fileiter2 = self._read_in_chunks(yy)
-    
-                leftover1 = leftover2 = ""
-    
-                while True:
-                    try: # grab a bit from input
-                        output1 = fileiter1.next()
-                    except StopIteration:
-                        output1 = ""
-            
-                    try: # grab a bit from input
-                        output2 = fileiter2.next()
-                    except StopIteration:
-                        output2 = ""
-                    
-                    output1 = leftover1 + output1
-                    output2 = leftover2 + output2
-                    
-                    if curlen1 == len(output1) and curlen2 == len(output2):
+                
+
+                with open(sam1, "r+b") as f:
+                    kmap = mmap.mmap(f.fileno(), 0, prot=mmap.PROT_READ)
+                    fileiter1 = iter(kmap.readline, "")
+                                       
+                with open(sam2, "r+b") as f:
+                    kmap = mmap.mmap(f.fileno(), 0, prot=mmap.PROT_READ)
+                    fileiter2 = iter(kmap.readline, "")
+
+                fileiter1 = deque(fileiter1)
+                fileiter2 = deque(fileiter2)
+
+                while fileiter1 and fileiter2:
+
+                    if len(fileiter1) <= 1 or len(fileiter2) <= 1:
                         break
-                    else:
-                        curlen1 = len(output1) 
-                        curlen2 = len(output2)
-                    
-                    if output1 == output2 == "":
-                        break
-                    
-                    leftoverpos1 = output1.rfind("\n")
-                    base1 = output1[:leftoverpos1 + 1]
-                    leftover1 = output1[leftoverpos1 + 1:]
-            
-                    leftoverpos2 = output2.rfind("\n")
-                    base2 = output2[:leftoverpos2 + 1]
-                    leftover2 = output2[leftoverpos2 + 1:]
-            
-                    base1, base2 = deque(base1.split("\n")[:-1]), deque(base2.split("\n")[:-1])
-                    
-                    reads1 = map(lambda x: x.split()[0], base1)
-                    reads2 = map(lambda x: x.split()[0], base2)
-                    
+
                     reads11 = []
-                    curread, curcounter = "", 0
-                    for read in reads1:
-                        if read == curread:
-                            curcounter += 1
+                    curread, curcounter1, curline = "", 0, ""
+                    bbb = []
+                    while True:
+                        try:
+                            read = fileiter1.popleft()
+                        except Exception:
+                            break
+                        r = read.split()[0]
+                        if r == curread:
+                            curcounter1 += 1
                         else:
-                            reads11.append((curread, curcounter))
-                            curread, curcounter = read, 1
-                    else:
-                        reads11.append((curread, curcounter))
-                    reads11 = deque(reads11[1:-1])
-                    
-                    reads22 = []
-                    curread, curcounter = "", 0
-                    for read in reads2:
-                        if read == curread:
-                            curcounter += 1
-                        else:
-                            reads22.append((curread, curcounter))
-                            curread, curcounter = read, 1
-                    else:
-                        reads22.append((curread, curcounter))
-                    reads22 = deque(reads22[1:-1])
-        
-                    while reads11 and reads22:
-                        r1, c1 = reads11.popleft()
-                        r2, c2 = reads22.popleft()
-    
-                        if c1 > 1 or c2 > 1:
-                            """skip these reads:
-                            they are multiple"""
-                            for i in range(c1):
-                                mtp.write("%s\n" % base1.popleft())
-                            for i in range(c2):
-                                mtp.write("%s\n" % base2.popleft())
-                        else:
-                            line1, line2 = base1.popleft().split(), base2.popleft().split()
-
-			    if line1[2] != "*":
-				first = self._covs.get(line1[2], {"len": 0, "count": 0})
-				first["len"] += len(line1[9])
-                                first["count"] += 1
-				self._covs[line1[2]] = first
-			    if line2[2] != "*":
-				second = self._covs.get(line2[2], {"len": 0, "count": 0})
-				second["len"] += len(line2[9])
-                                second["count"] += 1
-                                self._covs[line2[2]] = second
-
-                            if line1[2] == "*" or line2[2] == "*": # we use this with bowtie2
-                                unmapped.write(self._format_sam_line(line1, line2))
+                            if curcounter1 == 0:
+                                reads11.append((curread, curcounter1))
+                                bbb.append(read)
+                                curread, curcounter1 = r, 1
+                                curline = read
                             else:
-                                if line1[2] != line2[2]: # discard those who has mapped to the same contig
-				    mismatches1, mismatches2 = line1[13].split(":")[-1], line2[13].split(":")[-1]
-				    if int(mismatches1) > 1000 and int(mismatches2) > 1000:
-				        continue
-				    else:
-                                        mapped.write(self._format_sam_line(line1, line2))
-                                        self._paired_read_to_graph(line1, line2, lib_id)
-                                else:
-                                    same.write(self._format_sam_line(line1, line2))
-                    leftover1 = "\n".join(base1) + "\n" + leftover1
-                    leftover2 = "\n".join(base2) + "\n" + leftover2 
-        self._build_graph()       
+                                reads11.append((curread, curcounter1))
+                                break
+                    fileiter1.appendleft(read)
+                    line1 = curline
+
+                    reads22 = []
+                    curread, curcounter2, curline = "", 0, ""
+                    bbb = []
+                    while True:
+                        try:
+                            read = fileiter2.popleft()
+                        except Exception:
+                            break
+                        r = read.split()[0]
+                        if r == curread:
+                            curcounter2 += 1
+                        else:
+                            if curcounter2 == 0:
+                                reads22.append((curread, curcounter2))
+                                bbb.append(read)
+                                curread, curcounter2 = r, 1
+                                curline = read
+                            else:
+                                reads22.append((curread, curcounter2))
+                                break
+                    fileiter2.appendleft(read)
+                    line2 = curline
+
+                    if curcounter1 > 1 or curcounter2 > 1:
+                        continue
+                    else:
+                        line1, line2 = line1.split(), line2.split()
+			if line1[2] != "*":
+	                    first = self._covs.get(line1[2], {"len": 0, "count": 0})
+			    first["len"] += len(line1[9])
+                            first["count"] += 1
+			    self._covs[line1[2]] = first
+			if line2[2] != "*":
+			    second = self._covs.get(line2[2], {"len": 0, "count": 0})
+		            second["len"] += len(line2[9])
+                            second["count"] += 1
+                            self._covs[line2[2]] = second
+
+                        if line1[2] == "*" or line2[2] == "*": # we use this with bowtie2
+                            #unmapped.write(self._format_sam_line(line1, line2))
+                            pass
+                        else:
+                            if line1[2] != line2[2]: # discard those who has mapped to the same contig
+				mismatches1, mismatches2 = line1[13].split(":")[-1], line2[13].split(":")[-1]
+				if int(mismatches1) > 1000 and int(mismatches2) > 1000:
+				    continue
+				else:
+                                    #mapped.write(self._format_sam_line(line1, line2))
+                                    self._paired_read_to_graph(line1, line2, lib_id)
+                            else:
+                                pass
+                                #same.write(self._format_sam_line(line1, line2))
+
+        self._build_graph()
         for x in self._covs.keys():
             width = self._IGORgraph.node[x + "_1"]["width"]
 	    self._IGORgraph.node[x + "_1"]["cov"] = self._covs[x]["len"] * 1.0 / width
             self._IGORgraph.node[x + "_2"]["cov"] = self._covs[x]["len"] * 1.0 / width
-
 
         # stub
         for node in self._IGORgraph.nodes():
@@ -268,15 +246,6 @@ class GraphConstructor(object):
         elif orients == (1, 0):
             distance = ins_size - rpos1 - rpos2
             edge = (rname1 + "_2", rname2 + "_2")
-
-
-        #if (rname1 == "CP000144:5:42563:42783" and rname2 == "CP000144:6:42807:43402") or \
-        #    (rname1 == "CP000144:6:42807:43402" and rname2 == "CP000144:5:42563:42783"):
-        #    print rname1, rname2, lpos1, lpos2, oflag1, oflag2, orients, distance, edge
-
-
-
-
 
 
         #print edge, orients, distance
