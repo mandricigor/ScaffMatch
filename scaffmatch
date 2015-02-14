@@ -241,9 +241,8 @@ DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 SCAFFMATCH_DIR=""
 SCAFFMATCH_SCRIPT="scaffmatch.py"
 
-
 if [[ $DIR == *"ScaffMatch" ]]; then
-    SCAFFMATCH_DIR="" # ScaffMatch is run from its root directory (supposedly)
+    SCAFFMATCH_DIR="$DIR/" # ScaffMatch is run from its root directory (supposedly)
 else
     SCAFFMATCH_DIR="$DIR/ScaffMatch/" # ScaffMatch is run outside (supposedly, from /usr/bin)
 fi
