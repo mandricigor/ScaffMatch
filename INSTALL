@@ -26,8 +26,8 @@ Bowtie2 can be downloaded from:
 3. INSTALLATION
 
 To download the ScaffMatch source code (the latest version), type (Git is supposed to be installed on your system):
-    # git clone https://github.com/mandricigor/scaffmatch.git
-    # cd scaffmatch
+    # git clone https://github.com/mandricigor/ScaffMatch.git
+    # cd ScaffMatch
 
 To run the installation script, run the following command:
     # sh install.sh
