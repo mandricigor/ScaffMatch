@@ -508,9 +508,10 @@ def write_fasta(ctg_file, agp_file, scf_file):
     if 'fragment' in hits:
         hits.remove('fragment')
     
-    for name in contigs:
-        if name not in hits:
-            scf_fasta[name] = contigs[name]
+    # comment it out
+    #for name in contigs:
+    #    if name not in hits:
+    #        scf_fasta[name] = contigs[name]
                                 
     # write out scaffolds to file.
     with open(scf_file, 'wb') as fout:
